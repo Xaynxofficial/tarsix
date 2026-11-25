@@ -7,7 +7,7 @@
 [![CI](https://github.com/Xaynxofficial/tarsix/actions/workflows/ci.yml/badge.svg)](https://github.com/Xaynxofficial/tarsix/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/tarsix?style=flat-square&color=111827&label=npm%20tarsix)](https://www.npmjs.com/package/tarsix)
 [![Rust](https://img.shields.io/badge/Rust-Edition%202024-111827?style=flat-square)](Cargo.toml)
-[![Unsafe](https://img.shields.io/badge/unsafe__code-forbid%20(core)-0f766e?style=flat-square)](SECURITY.md)
+[![Safe Rust](https://img.shields.io/badge/core-100%25%20Safe%20Rust-0f766e?style=flat-square)](SECURITY.md)
 [![Dependencies](https://img.shields.io/badge/core%20dependencies-0-0f766e?style=flat-square)](Cargo.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-111827?style=flat-square)](LICENSE)
 
@@ -109,34 +109,98 @@ Tarsix treats every external model file, serialized graph, dataset, and shape he
 
 ---
 
-## Quick Start
+## Quick Start & Usage Guides
 
-### 1. Rust Workspace & CLI
+### 1. Using Tarsix in Rust Code (`Tensor` & `Autograd`)
+
+Add the crates you need from this workspace (or git URL) to your `Cargo.toml`:
+
+```toml
+[dependencies]
+as-tensor   = { git = "https://github.com/Xaynxofficial/tarsix" }
+as-autograd = { git = "https://github.com/Xaynxofficial/tarsix" }
+```
+
+```rust
+use as_autograd::Tape;
+use as_tensor::{DType, Result, Tensor};
+
+fn main() -> Result<()> {
+    // 1. Tensor creation, broadcasting & multi-core tiled MatMul
+    let a = Tensor::from_f32(&[1.0, 2.0, 3.0, 4.0], vec![2, 2])?;
+    let b = Tensor::from_f32(&[5.0, 6.0, 7.0, 8.0], vec![2, 2])?;
+    let bias = Tensor::from_f32(&[1.0, -2.0], vec![1, 2])?;
+    let out = a.matmul(&b)?.add(&bias)?;
+    println!("MatMul + bias = {:?}", out.to_f32_vec()?); // [20.0, 20.0, 44.0, 48.0]
+
+    // 2. Automatic Differentiation (Reverse-Mode Tape)
+    let mut tape = Tape::new();
+    let x = tape.var(Tensor::from_f64(&[2.0, 3.0], vec![1, 2])?, true);
+    let w = tape.var(Tensor::from_f64(&[0.5, -1.0], vec![2, 1])?, true);
+    let y = tape.matmul(x, w)?;
+    let loss = tape.powf(y, 2.0)?;
+    let grads = tape.backward(loss)?;
+    println!("dL/dw = {:?}", grads.get(w).unwrap().to_f64_vec()?);
+    Ok(())
+}
+```
+
+### 2. Training & Predicting from the Terminal (`as-cli`)
+
+Clone the repo and run commands directly — no Python environment required:
 
 ```bash
-# Run the full verification suite (unit, numerical, gradcheck, JVP==VJP, security)
+git clone https://github.com/Xaynxofficial/tarsix.git
+cd tarsix
+
+# Verify all 37 unit, numerical, gradcheck, and security tests
 cargo test --workspace
 
-# Run reproducible CPU benchmarks
-cargo run --release -p as-bench
-
-# Hardware & security diagnostics
+# Show detected CPU/GPU hardware & security posture
 cargo run --release -p as-cli -- info
 ```
 
-**Train & predict on any CSV dataset:**
+**Prepare your own CSV dataset** (numeric feature columns, last column = integer class `0, 1, 2...`):
+```csv
+height_m,weight_100kg,label
+1.80,0.52,0
+1.75,0.68,1
+1.70,0.92,2
+```
+
+**Train, save a checksummed `.asck` model, and run live predictions:**
 ```bash
+# Or generate a ready-to-use 240-sample 3-class CSV dataset
 cargo run --release -p as-cli -- make-dataset /tmp/data.csv 240
+
+# Train (80% train / 20% validation split, AdamW + CosineAnnealingLr + grad clipping)
+# Usage: train <data.csv> <out.asck> [epochs] [hidden_units]
 cargo run --release -p as-cli -- train /tmp/data.csv /tmp/model.asck 80 24
+
+# Predict on new unseen inputs
 cargo run --release -p as-cli -- predict /tmp/model.asck "0.1,0.1"
 ```
 
-**Run any compatible HuggingFace Safetensors LLM (SmolLM2, Qwen2.5, Llama, Mistral):**
+**Train a mini Causal Transformer from scratch & chat:**
 ```bash
-cargo run --release -p as-cli -- run-llm /path/to/hf_model_dir "Artificial intelligence is" 40 0.7
+cargo run --release -p as-cli -- demo-chat $'S: merhaba\nC:'
 ```
 
-### 2. TypeScript / JavaScript (`npm install tarsix`)
+### 3. Running Real HuggingFace LLMs (Llama / Qwen2 / SmolLM / Mistral)
+
+```bash
+# 1. Download a compact Safetensors model (e.g., SmolLM2-135M-Instruct, ~270 MB)
+mkdir -p /tmp/smollm2 && cd /tmp/smollm2
+curl -LO https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/resolve/main/config.json
+curl -LO https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/resolve/main/tokenizer.json
+curl -LO https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/resolve/main/model.safetensors
+
+# 2. Run streaming autoregressive generation directly with Tarsix
+cd /path/to/tarsix
+cargo run --release -p as-cli -- run-llm /tmp/smollm2 "Artificial intelligence is" 40 0.7
+```
+
+### 4. TypeScript / JavaScript (`npm install tarsix`)
 
 Works in **Node.js (>=18)** and **Web Browsers** with the **114 KiB** WebAssembly engine bundled — zero external dependencies, no Rust or Python required:
 
@@ -158,12 +222,15 @@ console.log(out.toF32Array()); // Float32Array(4) [ 20, 20, 44, 48 ]
 a.dispose(); b.dispose(); bias.dispose(); out.dispose();
 ```
 
-### 3. Python (`ctypes`) & C / C++ (`include/tarsix.h`)
+### 5. Python (`ctypes`) & C / C++ (`include/tarsix.h`)
 
 Calls the native multi-core Rust library directly via C ABI with zero `pip` dependencies:
 
 ```bash
+# Build native shared library (target/release/libas_wasm.dylib | .so | .dll)
 cargo build -p as-wasm --release
+
+# Run Python example
 python3 sdk/python/tarsix.py
 ```
 
@@ -173,6 +240,17 @@ from sdk.python.tarsix import Tensor
 a = Tensor.from_list([1.0, 2.0, 3.0, 4.0], [2, 2])
 b = Tensor.from_list([5.0, 6.0, 7.0, 8.0], [2, 2])
 print((a @ b).to_list())  # [19.0, 22.0, 43.0, 50.0]
+```
+
+```c
+#include "include/tarsix.h"
+
+uint32_t shape[2] = {2, 2};
+float a_vals[4] = {1, 2, 3, 4};
+float b_vals[4] = {5, 6, 7, 8};
+uint32_t a = as_tensor_from_f32(a_vals, 4, shape, 2);
+uint32_t b = as_tensor_from_f32(b_vals, 4, shape, 2);
+uint32_t c = as_tensor_matmul(a, b);
 ```
 
 ---
