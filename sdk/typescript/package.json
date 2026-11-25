@@ -37,5 +37,14 @@
     "build:wasm": "cargo build -p as-wasm --target wasm32-unknown-unknown --release && cp ../../target/wasm32-unknown-unknown/release/as_wasm.wasm ./wasm/as_wasm.wasm",
     "test": "node ./test_pkg.mjs"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Xaynxofficial/tarsix",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xaynxofficial/tarsix.git",
+    "directory": "sdk/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/Xaynxofficial/tarsix/issues"
+  }
 }

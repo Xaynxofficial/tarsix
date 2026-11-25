@@ -27,7 +27,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
 authors = ["Independent AI Computing Infrastructure Contributors"]
-repository = "https://example.com/as-engine"
+repository = "https://github.com/Xaynxofficial/tarsix"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
