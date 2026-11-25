@@ -22,9 +22,10 @@ use as_nn::{Embedding, Linear, Module, Rng, TransformerBlock, cross_entropy_loss
 use as_optim::{AdamW, CosineAnnealingLr, LrScheduler, Optimizer, clip_grad_norm};
 use as_tensor::Tensor;
 use as_train::{
-    DataLoader, Dataset, InMemoryDataset, Sample, classification_accuracy, format_csv_dataset,
-    generate_synthetic_classification_dataset, inspect_checkpoint_shapes, load_checkpoint,
-    parse_csv_dataset, save_checkpoint, train_val_split,
+    DataLoader, Dataset, EpochMetrics, InMemoryDataset, MetricsTracker, Sample,
+    classification_accuracy, format_csv_dataset, generate_synthetic_classification_dataset,
+    inspect_checkpoint_shapes, load_checkpoint, parse_csv_dataset, render_training_svg,
+    save_checkpoint, train_val_split,
 };
 
 fn main() -> ExitCode {
@@ -326,6 +327,7 @@ fn cmd_train_csv(csv_path: &str, out_path: &str, epochs: usize, hidden: usize) -
         total_steps: epochs.max(1),
     };
 
+    let mut tracker = MetricsTracker::new();
     for epoch in 0..epochs {
         optim.set_learning_rate(scheduler.lr_at(epoch));
         let batches = loader.epoch_batches(&train_ds, &mut rng)?;
@@ -357,22 +359,30 @@ fn cmd_train_csv(csv_path: &str, out_path: &str, epochs: usize, hidden: usize) -
             optim.step(&mut params, &grad_refs)?;
         }
 
+        let mean_loss = loss_sum / (batches.len().max(1) as f64);
+        let val_batches = val_loader.epoch_batches(&val_ds, &mut rng)?;
+        let mut val_acc = 0.0;
+        if let Some(vb) = val_batches.first() {
+            let mut eval_tape = Tape::new();
+            eval_tape.set_grad_enabled(false);
+            let vx = eval_tape.var(vb.inputs.clone(), false);
+            let (h1, _) = fc1.forward(&mut eval_tape, vx)?;
+            let act = gelu(&mut eval_tape, h1)?;
+            let (logits, _) = fc2.forward(&mut eval_tape, act)?;
+            val_acc = classification_accuracy(eval_tape.value(logits)?, &vb.labels)?;
+        }
+        tracker.record(EpochMetrics {
+            epoch,
+            train_loss: mean_loss,
+            val_loss: None,
+            val_accuracy: Some(val_acc),
+        });
+
         if epoch == 0 || (epoch + 1) % (epochs / 4).max(1) == 0 || epoch + 1 == epochs {
-            let val_batches = val_loader.epoch_batches(&val_ds, &mut rng)?;
-            let mut val_acc = 0.0;
-            if let Some(vb) = val_batches.first() {
-                let mut eval_tape = Tape::new();
-                eval_tape.set_grad_enabled(false);
-                let vx = eval_tape.var(vb.inputs.clone(), false);
-                let (h1, _) = fc1.forward(&mut eval_tape, vx)?;
-                let act = gelu(&mut eval_tape, h1)?;
-                let (logits, _) = fc2.forward(&mut eval_tape, act)?;
-                val_acc = classification_accuracy(eval_tape.value(logits)?, &vb.labels)?;
-            }
             println!(
                 "  epoch {:>3}/{epochs} | train_loss = {:.4} | val_acc = {:.1}%",
                 epoch + 1,
-                loss_sum / (batches.len().max(1) as f64),
+                mean_loss,
                 val_acc * 100.0
             );
         }
@@ -385,8 +395,20 @@ fn cmd_train_csv(csv_path: &str, out_path: &str, epochs: usize, hidden: usize) -
         context: "train",
         reason: format!("failed to write checkpoint `{out_path}`: {e}"),
     })?;
+
+    let svg_path = if let Some(stem) = out_path.strip_suffix(".asck") {
+        format!("{stem}.svg")
+    } else {
+        format!("{out_path}.svg")
+    };
+    let svg = render_training_svg(&format!("Training Report ({csv_path})"), tracker.history())?;
+    fs::write(&svg_path, svg).map_err(|e| Error::InvalidArgument {
+        context: "train",
+        reason: format!("failed to write SVG report `{svg_path}`: {e}"),
+    })?;
+
     println!(
-        "Saved verified ASCK checkpoint `{out_path}` ({} bytes).",
+        "Saved verified ASCK checkpoint `{out_path}` ({} bytes) & chart `{svg_path}`.",
         ckpt_bytes.len()
     );
     Ok(())
