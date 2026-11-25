@@ -15,6 +15,7 @@ as-optim = { path = "../as-optim" }
 as-train = { path = "../as-train" }
 as-io = { path = "../as-io" }
 as-llm = { path = "../as-llm" }
+as-vision = { path = "../as-vision" }
 as-accel = { path = "../as-accel" }
 
 [lints]

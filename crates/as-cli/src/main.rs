@@ -27,6 +27,10 @@ use as_train::{
     inspect_checkpoint_shapes, load_checkpoint, parse_csv_dataset, render_training_svg,
     save_checkpoint, train_val_split,
 };
+use as_vision::{
+    BBox, ImageBuffer, LabeledBox, ObjectDetector, decode_detections, detection_loss,
+    encode_yolo_targets, resize_bilinear, to_normalized_chw_tensor,
+};
 
 fn main() -> ExitCode {
     match run() {
@@ -133,6 +137,31 @@ fn run() -> Result<()> {
             })?;
             cmd_inspect_safetensors(path)
         }
+        "train-yolo" => {
+            let out_path = args.get(2).ok_or_else(|| Error::InvalidArgument {
+                context: "as-cli train-yolo",
+                reason: "usage: as-cli train-yolo <out.asck> [steps]".to_owned(),
+            })?;
+            let steps: usize = args
+                .get(3)
+                .map_or(Ok(60), |s| s.parse())
+                .map_err(|_| Error::InvalidArgument {
+                    context: "as-cli train-yolo",
+                    reason: "steps must be a positive integer".to_owned(),
+                })?;
+            cmd_train_yolo(out_path, steps)
+        }
+        "detect-yolo" => {
+            let ckpt_path = args.get(2).ok_or_else(|| Error::InvalidArgument {
+                context: "as-cli detect-yolo",
+                reason: "usage: as-cli detect-yolo <model.asck> <image.ppm>".to_owned(),
+            })?;
+            let img_path = args.get(3).ok_or_else(|| Error::InvalidArgument {
+                context: "as-cli detect-yolo",
+                reason: "usage: as-cli detect-yolo <model.asck> <image.ppm>".to_owned(),
+            })?;
+            cmd_detect_yolo(ckpt_path, img_path)
+        }
         _ => {
             print_help();
             Ok(())
@@ -152,6 +181,8 @@ fn print_help() {
     println!("  as-cli demo-llm [prompt]                         Run tiny RoPE/GQA/KV-Cache LLM demo");
     println!("  as-cli demo-chat [prompt]                        Train a mini Causal Transformer from scratch & chat");
     println!("  as-cli run-llm <model_dir> <prompt> [tok] [t]    Run any Llama/Qwen2/Mistral/SmolLM Safetensors model");
+    println!("  as-cli train-yolo <out.asck> [steps]             Train YOLO ObjectDetector, save .asck + .svg");
+    println!("  as-cli detect-yolo <model.asck> <image.ppm>      Detect objects in a PPM image using saved .asck");
     println!("  as-cli inspect-safetensors <path>                Safely inspect a .safetensors archive");
 }
 
@@ -664,5 +695,234 @@ fn cmd_run_hf_llm(dir: &str, prompt: &str, max_tokens: usize, temperature: f64) 
         },
     )?;
     println!();
+    Ok(())
+}
+
+fn make_synthetic_object_image(cx_px: usize, cy_px: usize, is_red: bool) -> Result<ImageBuffer> {
+    let mut pixels = vec![12u8; 16 * 16 * 3];
+    let y0 = cy_px.saturating_sub(2);
+    let y1 = (cy_px + 2).min(16);
+    let x0 = cx_px.saturating_sub(2);
+    let x1 = (cx_px + 2).min(16);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let base = (y * 16 + x) * 3;
+            if is_red {
+                if let Some(s) = pixels.get_mut(base) {
+                    *s = 250;
+                }
+            } else if let Some(s) = pixels.get_mut(base + 2) {
+                *s = 250;
+            }
+        }
+    }
+    ImageBuffer::new(16, 16, 3, pixels)
+}
+
+fn write_ppm(path: &str, img: &ImageBuffer) -> Result<()> {
+    let mut out = format!("P6\n{} {}\n255\n", img.width, img.height).into_bytes();
+    out.extend_from_slice(&img.data);
+    fs::write(path, out).map_err(|e| Error::InvalidArgument {
+        context: "write_ppm",
+        reason: format!("failed to write `{path}`: {e}"),
+    })
+}
+
+fn read_ppm(path: &str) -> Result<ImageBuffer> {
+    let bytes = fs::read(path).map_err(|e| Error::InvalidArgument {
+        context: "read_ppm",
+        reason: format!("failed to read `{path}`: {e}"),
+    })?;
+    if !bytes.starts_with(b"P6") {
+        return Err(Error::InvalidArgument {
+            context: "read_ppm",
+            reason: "only binary P6 PPM images are supported".to_owned(),
+        });
+    }
+    let mut idx = 2usize;
+    let mut tokens = Vec::with_capacity(3);
+    while tokens.len() < 3 && idx < bytes.len() {
+        while idx < bytes.len() && bytes.get(idx).is_some_and(u8::is_ascii_whitespace) {
+            idx += 1;
+        }
+        if bytes.get(idx) == Some(&b'#') {
+            while idx < bytes.len() && bytes.get(idx) != Some(&b'\n') {
+                idx += 1;
+            }
+            continue;
+        }
+        let start = idx;
+        while idx < bytes.len() && !bytes.get(idx).is_some_and(u8::is_ascii_whitespace) {
+            idx += 1;
+        }
+        let tok = core::str::from_utf8(bytes.get(start..idx).unwrap_or(&[])).map_err(|_| {
+            Error::InvalidArgument {
+                context: "read_ppm",
+                reason: "invalid UTF-8 in PPM header".to_owned(),
+            }
+        })?;
+        tokens.push(tok.to_owned());
+    }
+    if tokens.len() < 3 {
+        return Err(Error::InvalidArgument {
+            context: "read_ppm",
+            reason: "incomplete PPM header".to_owned(),
+        });
+    }
+    // Skip single whitespace byte separating header from raw RGB payload
+    idx += 1;
+    let w: usize = tokens[0].parse().map_err(|_| Error::InvalidArgument {
+        context: "read_ppm",
+        reason: "invalid width".to_owned(),
+    })?;
+    let h: usize = tokens[1].parse().map_err(|_| Error::InvalidArgument {
+        context: "read_ppm",
+        reason: "invalid height".to_owned(),
+    })?;
+    let data = bytes.get(idx..).unwrap_or(&[]).to_vec();
+    ImageBuffer::new(h, w, 3, data)
+}
+
+fn cmd_train_yolo(out_path: &str, steps: usize) -> Result<()> {
+    let mean = [0.0f32, 0.0, 0.0];
+    let std = [1.0f32, 1.0, 1.0];
+
+    // 2 training images: class 0 = red square at (6, 6), class 1 = blue square at (10, 6)
+    let img0 = make_synthetic_object_image(6, 6, true)?;
+    let img1 = make_synthetic_object_image(10, 6, false)?;
+    let sample_ppm = "/tmp/yolo_sample.ppm";
+    write_ppm(sample_ppm, &img1)?;
+
+    let t0 = to_normalized_chw_tensor(&img0, &mean, &std)?;
+    let t1 = to_normalized_chw_tensor(&img1, &mean, &std)?;
+    let gt0 = encode_yolo_targets(
+        &[vec![LabeledBox {
+            bbox: BBox { cx: 6.0 / 16.0, cy: 6.0 / 16.0, w: 0.25, h: 0.25 },
+            class_id: 0,
+        }]],
+        4,
+        4,
+        2,
+    )?;
+    let gt1 = encode_yolo_targets(
+        &[vec![LabeledBox {
+            bbox: BBox { cx: 10.0 / 16.0, cy: 6.0 / 16.0, w: 0.25, h: 0.25 },
+            class_id: 1,
+        }]],
+        4,
+        4,
+        2,
+    )?;
+
+    let mut detector = ObjectDetector::new(3, 8, 2, 42)?;
+    let mut optim = AdamW::new(0.03, 1e-4);
+    let mut tracker = MetricsTracker::new();
+
+    println!("Training YOLO ObjectDetector ({steps} steps, 2 classes: 0=red, 1=blue)...");
+    for step in 0..steps {
+        let mut step_loss = 0.0f64;
+        for (img_t, gt_t) in [(&t0, &gt0), (&t1, &gt1)] {
+            let mut tape = Tape::new();
+            let vx = tape.var(img_t.clone(), false);
+            let vt = tape.var(gt_t.clone(), false);
+            let (pred, pvars) = detector.forward(&mut tape, vx)?;
+            let loss = detection_loss(&mut tape, pred, vt)?;
+            step_loss += f64::from(tape.value(loss)?.to_f32_vec()?.first().copied().unwrap_or(0.0));
+
+            let grads = tape.backward(loss)?;
+            let mut g_tensors = Vec::with_capacity(pvars.len());
+            for &v in &pvars {
+                let g = grads.get(v).cloned().ok_or(Error::InternalInvariant {
+                    message: "missing gradient in train-yolo",
+                })?;
+                g_tensors.push(g);
+            }
+            let _ = clip_grad_norm(&mut g_tensors, 5.0)?;
+            let g_refs: Vec<Option<&Tensor>> = g_tensors.iter().map(Some).collect();
+            let mut params = detector.parameters_mut();
+            optim.step(&mut params, &g_refs)?;
+        }
+        let mean_loss = step_loss * 0.5;
+        tracker.record(EpochMetrics {
+            epoch: step,
+            train_loss: mean_loss,
+            val_loss: None,
+            val_accuracy: None,
+        });
+        if step == 0 || (step + 1) % (steps / 3).max(1) == 0 || step + 1 == steps {
+            println!("  step {:>3}/{steps} | det_loss = {:.4}", step + 1, mean_loss);
+        }
+    }
+
+    let ckpt_bytes = save_checkpoint(&detector.parameters())?;
+    fs::write(out_path, &ckpt_bytes).map_err(|e| Error::InvalidArgument {
+        context: "train-yolo",
+        reason: format!("failed to write `{out_path}`: {e}"),
+    })?;
+
+    let svg_path = if let Some(stem) = out_path.strip_suffix(".asck") {
+        format!("{stem}.svg")
+    } else {
+        format!("{out_path}.svg")
+    };
+    let svg = render_training_svg("YOLO ObjectDetector Training", tracker.history())?;
+    fs::write(&svg_path, svg).map_err(|e| Error::InvalidArgument {
+        context: "train-yolo",
+        reason: format!("failed to write `{svg_path}`: {e}"),
+    })?;
+    println!(
+        "Saved YOLO model `{out_path}` ({} bytes), chart `{svg_path}`, sample image `{sample_ppm}`.",
+        ckpt_bytes.len()
+    );
+    Ok(())
+}
+
+fn cmd_detect_yolo(ckpt_path: &str, img_path: &str) -> Result<()> {
+    let bytes = fs::read(ckpt_path).map_err(|e| Error::InvalidArgument {
+        context: "detect-yolo",
+        reason: format!("failed to read `{ckpt_path}`: {e}"),
+    })?;
+    let specs = inspect_checkpoint_shapes(&bytes, MemoryLimits::default())?;
+    let (stem_shape, _) = specs.get("det.stem.weight").ok_or_else(|| Error::InvalidArgument {
+        context: "detect-yolo",
+        reason: "checkpoint missing `det.stem.weight`".to_owned(),
+    })?;
+    let (head_shape, _) = specs.get("det.head.weight").ok_or_else(|| Error::InvalidArgument {
+        context: "detect-yolo",
+        reason: "checkpoint missing `det.head.weight`".to_owned(),
+    })?;
+
+    let hidden = stem_shape.dim(0)?;
+    let in_channels = stem_shape.dim(1)?;
+    let num_classes = head_shape.dim(0)?.saturating_sub(5);
+
+    let mut detector = ObjectDetector::new(in_channels, hidden, num_classes, 0)?;
+    {
+        let mut params = detector.parameters_mut();
+        load_checkpoint(&bytes, &mut params, MemoryLimits::default())?;
+    }
+
+    let raw_img = read_ppm(img_path)?;
+    let resized = resize_bilinear(&raw_img, 16, 16)?;
+    let input = to_normalized_chw_tensor(&resized, &[0.0, 0.0, 0.0], &[1.0, 1.0, 1.0])?;
+
+    let mut tape = Tape::new();
+    tape.set_grad_enabled(false);
+    let vx = tape.var(input, false);
+    let (pred_grid, _) = detector.forward(&mut tape, vx)?;
+    let detections = decode_detections(tape.value(pred_grid)?, num_classes, 0.35, 0.5)?;
+
+    println!("Image: `{img_path}` ({}x{}) | Detections: {}", raw_img.width, raw_img.height, detections.len());
+    for (i, d) in detections.iter().enumerate() {
+        println!(
+            "  [{i}] class={} conf={:.1}% bbox=(cx={:.2}, cy={:.2}, w={:.2}, h={:.2})",
+            d.class_id,
+            d.confidence * 100.0,
+            d.bbox.cx,
+            d.bbox.cy,
+            d.bbox.w,
+            d.bbox.h
+        );
+    }
     Ok(())
 }
