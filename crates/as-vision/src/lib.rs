@@ -16,10 +16,15 @@
 )]
 
 pub mod cnn;
+pub mod detect;
 pub mod preprocess;
 pub mod vit;
 
 pub use cnn::{CnnClassifier, max_pool2d};
+pub use detect::{
+    BBox, Detection, LabeledBox, ObjectDetector, decode_detections, detection_loss,
+    encode_yolo_targets, iou, nms,
+};
 pub use preprocess::{
     IMAGENET_MEAN, IMAGENET_STD, ImageBuffer, MAX_IMAGE_DIM, resize_bilinear, stack_batch,
     to_normalized_chw_tensor,
