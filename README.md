@@ -86,7 +86,7 @@ flowchart TB
 | **Tensor Engine** | N-dimensional tensors, zero-copy `Shape`/`Stride`/`Offset` view algebra (`transpose`, `permute`, `slice`, `reshape`, `broadcast_to`), independent IEEE-754 `F16` & `BF16` (round-to-nearest-even, exhaustively verified across all 65,536 bit patterns), `F32`, `F64`, `I32`, `I64`. |
 | **Computational Graph** | Iterative Kahn topological scheduler with cycle detection, Dead-Code Elimination (DCE), single-pass Unary Operation Fusion (`FusedUnaryChain`), liveness-based intermediate buffer release, checksummed `ASGR` binary serialization. |
 | **Automatic Differentiation** | Panic-free reverse-mode `Tape` with broadcast unbroadcasting, differentiable `im2col`/`col2im`, multi-step gradient accumulation, just-in-time recomputing **gradient checkpointing**, forward-mode `DualTensor` (JVP), and central finite-difference `gradcheck`. |
-| **Neural Networks & Training** | Deterministic `Xoshiro256++` PRNG, `Linear`, `Embedding`, `LayerNorm`, `RmsNorm`, `Dropout`, `Conv2d`, `MultiHeadAttention`, `TransformerBlock`, `Sgd`/`Adam`/`AdamW`, `StepLr`/`CosineAnnealingLr`, global L2 gradient clipping, CSV dataset I/O, and checksummed `ASCK` checkpoints. |
+| **Neural Networks & Training** | Deterministic `Xoshiro256++` PRNG, `Linear`, **`LoRALinear`** (Low-Rank Adaptation + `merge_weights()`), `Embedding`, `LayerNorm`, `RmsNorm`, `Dropout`, `Conv2d`, `MultiHeadAttention`, `TransformerBlock`, `Sgd`/`Adam`/`AdamW`, `StepLr`/`CosineAnnealingLr`, global L2 gradient clipping, CSV dataset I/O, checksummed `ASCK` checkpoints, and automatic **minimal SVG training charts**. |
 | **Model Interoperability & Runtime** | Recursion-bounded JSON parser, zero-dependency **Safetensors** reader/writer (`F32/F64/F16/BF16/I32/I64`), `InferenceSession` with graph optimization, latency profiling, dynamic request batching, and streaming step execution. |
 | **LLM Engine** | Multi-architecture HuggingFace loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`, `TinyLlama`), Grouped-Query Attention (GQA), RoPE, bounded `KvCache`, HuggingFace `tokenizer.json` BPE & `ByteTokenizer`, Int8 per-channel `QuantizedLinear`, and Temperature/Top-k/Top-p streaming generation. |
 | **Computer Vision** | Validated `ImageBuffer`, bilinear resizing, ImageNet CHW normalization, `PatchEmbed`, bidirectional `VisionTransformer` (ViT), `max_pool2d`, and end-to-end trainable `CnnClassifier`. |
@@ -242,14 +242,15 @@ b = Tensor.from_list([5.0, 6.0, 7.0, 8.0], [2, 2])
 print((a @ b).to_list())  # [19.0, 22.0, 43.0, 50.0]
 ```
 
-**C / C++** (full runnable example in [`examples/cpp_basic.cpp`](examples/cpp_basic.cpp)):
+```c
+#include "include/tarsix.h"
 
-```bash
-# Build native library & compile C++ example
-cargo build -p as-wasm --release
-clang++ -std=c++17 examples/cpp_basic.cpp -Iinclude -Ltarget/release -las_wasm -Wl,-rpath,target/release -o /tmp/tarsix_cpp
-/tmp/tarsix_cpp
-# Output: C++ -> Native Rust Tarsix result: [20.0, 20.0, 44.0, 48.0]
+uint32_t shape[2] = {2, 2};
+float a_vals[4] = {1, 2, 3, 4};
+float b_vals[4] = {5, 6, 7, 8};
+uint32_t a = as_tensor_from_f32(a_vals, 4, shape, 2);
+uint32_t b = as_tensor_from_f32(b_vals, 4, shape, 2);
+uint32_t c = as_tensor_matmul(a, b);
 ```
 
 ---
