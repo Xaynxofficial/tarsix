@@ -242,15 +242,14 @@ b = Tensor.from_list([5.0, 6.0, 7.0, 8.0], [2, 2])
 print((a @ b).to_list())  # [19.0, 22.0, 43.0, 50.0]
 ```
 
-```c
-#include "include/tarsix.h"
+**C / C++** (full runnable example in [`examples/cpp_basic.cpp`](examples/cpp_basic.cpp)):
 
-uint32_t shape[2] = {2, 2};
-float a_vals[4] = {1, 2, 3, 4};
-float b_vals[4] = {5, 6, 7, 8};
-uint32_t a = as_tensor_from_f32(a_vals, 4, shape, 2);
-uint32_t b = as_tensor_from_f32(b_vals, 4, shape, 2);
-uint32_t c = as_tensor_matmul(a, b);
+```bash
+# Build native library & compile C++ example
+cargo build -p as-wasm --release
+clang++ -std=c++17 examples/cpp_basic.cpp -Iinclude -Ltarget/release -las_wasm -Wl,-rpath,target/release -o /tmp/tarsix_cpp
+/tmp/tarsix_cpp
+# Output: C++ -> Native Rust Tarsix result: [20.0, 20.0, 44.0, 48.0]
 ```
 
 ---
