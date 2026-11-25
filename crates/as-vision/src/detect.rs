@@ -4,10 +4,14 @@
 //! fully differentiable single-stage grid head (`[N, 5 + num_classes, S, S]`) so users
 //! can both **train from scratch / fine-tune** on custom bounding boxes and run NMS inference.
 
+use std::fmt::Write as _;
+
 use as_autograd::{Tape, VarId};
 use as_core::{DType, Error, Result};
 use as_nn::{Conv2d, Module, Param, Rng, mse_loss};
 use as_tensor::Tensor;
+
+use crate::preprocess::ImageBuffer;
 
 /// Normalized `[0.0, 1.0]` center-format bounding box `(cx, cy, w, h)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -312,4 +316,75 @@ impl Module for ObjectDetector {
         p.extend(self.head.parameters_mut());
         p
     }
+}
+
+/// Renders an [`ImageBuffer`] with overlaid YOLO [`Detection`] bounding boxes and labels
+/// as a crisp, minimal white-framed SVG (`400x440`).
+pub fn render_detections_svg(img: &ImageBuffer, detections: &[Detection]) -> String {
+    let canvas_w = 400.0f32;
+    let canvas_h = 440.0f32;
+    let pad = 24.0f32;
+    let img_box = 352.0f32;
+    let cell_w = img_box / (img.width.max(1) as f32);
+    let cell_h = img_box / (img.height.max(1) as f32);
+
+    let mut svg = String::with_capacity(8192);
+    let _ = write!(
+        svg,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {canvas_w} {canvas_h}" width="{canvas_w}" height="{canvas_h}">
+  <rect x="0.5" y="0.5" width="{bw}" height="{bh}" rx="12" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="24" y="34" fill="#111827" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif" font-size="15" font-weight="600">Tarsix · YOLO Detection Output</text>
+  <text x="24" y="52" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif" font-size="11.5">{w}x{h} RGB · {n_det} object(s) detected</text>
+  <g transform="translate({pad}, 66)">
+"##,
+        bw = canvas_w - 1.0,
+        bh = canvas_h - 1.0,
+        w = img.width,
+        h = img.height,
+        n_det = detections.len(),
+    );
+
+    // Draw image pixels
+    for y in 0..img.height {
+        for x in 0..img.width {
+            let base = (y * img.width + x) * img.channels;
+            let r = img.data.get(base).copied().unwrap_or(0);
+            let g = img.data.get(base + 1).copied().unwrap_or(r);
+            let b = img.data.get(base + 2).copied().unwrap_or(r);
+            let px = (x as f32) * cell_w;
+            let py = (y as f32) * cell_h;
+            let _ = write!(
+                svg,
+                "    <rect x=\"{px:.1}\" y=\"{py:.1}\" width=\"{cw:.1}\" height=\"{ch:.1}\" fill=\"rgb({r},{g},{b})\"/>\n",
+                cw = cell_w + 0.4,
+                ch = cell_h + 0.4,
+            );
+        }
+    }
+
+    // Draw predicted YOLO bounding boxes + confidence badges
+    let palette = ["#10b981", "#2563eb", "#f59e0b", "#ef4444"];
+    for d in detections {
+        let (x1, y1, x2, y2) = d.bbox.to_xyxy();
+        let bx = (x1.clamp(0.0, 1.0)) * img_box;
+        let by = (y1.clamp(0.0, 1.0)) * img_box;
+        let bw = ((x2 - x1).clamp(0.0, 1.0)) * img_box;
+        let bh = ((y2 - y1).clamp(0.0, 1.0)) * img_box;
+        let color = palette.get(d.class_id % palette.len()).copied().unwrap_or("#10b981");
+        let pct = (d.confidence.clamp(0.0, 1.0)) * 100.0;
+        let lbl_y = (by - 20.0).max(0.0);
+        let _ = write!(
+            svg,
+            r##"    <rect x="{bx:.1}" y="{by:.1}" width="{bw:.1}" height="{bh:.1}" fill="none" stroke="{color}" stroke-width="2.5" rx="3"/>
+    <rect x="{bx:.1}" y="{lbl_y:.1}" width="108" height="18" rx="3" fill="{color}"/>
+    <text x="{tx:.1}" y="{ty:.1}" fill="#ffffff" font-family="ui-monospace,SFMono-Regular,monospace" font-size="10.5" font-weight="600">cls:{cls} {pct:.0}%</text>
+"##,
+            tx = bx + 6.0,
+            ty = lbl_y + 12.5,
+            cls = d.class_id,
+        );
+    }
+
+    svg.push_str("  </g>\n</svg>\n");
+    svg
 }

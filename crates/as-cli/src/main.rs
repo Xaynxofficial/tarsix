@@ -29,7 +29,7 @@ use as_train::{
 };
 use as_vision::{
     BBox, ImageBuffer, LabeledBox, ObjectDetector, decode_detections, detection_loss,
-    encode_yolo_targets, resize_bilinear, to_normalized_chw_tensor,
+    encode_yolo_targets, render_detections_svg, resize_bilinear, to_normalized_chw_tensor,
 };
 
 fn main() -> ExitCode {
@@ -924,5 +924,17 @@ fn cmd_detect_yolo(ckpt_path: &str, img_path: &str) -> Result<()> {
             d.bbox.h
         );
     }
+
+    let out_svg = if let Some(stem) = img_path.strip_suffix(".ppm") {
+        format!("{stem}_detected.svg")
+    } else {
+        format!("{img_path}_detected.svg")
+    };
+    let svg = render_detections_svg(&resized, &detections);
+    fs::write(&out_svg, svg).map_err(|e| Error::InvalidArgument {
+        context: "detect-yolo",
+        reason: format!("failed to write `{out_svg}`: {e}"),
+    })?;
+    println!("Saved visual detection overlay `{out_svg}`.");
     Ok(())
 }
