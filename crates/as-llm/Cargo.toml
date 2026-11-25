@@ -1,0 +1,16 @@
+[package]
+name = "as-llm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Independent LLM engine: Transformer decoder, RoPE, RMSNorm, KV-Cache, Tokenizer, Quantized Linear, and streaming generation."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-nn = { path = "../as-nn" }
+as-io = { path = "../as-io" }
+
+[lints]
+workspace = true

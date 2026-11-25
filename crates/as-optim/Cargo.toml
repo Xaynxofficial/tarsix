@@ -1,0 +1,15 @@
+[package]
+name = "as-optim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Optimization algorithms (SGD, Adam, AdamW), learning-rate schedulers, and gradient clipping."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-nn = { path = "../as-nn" }
+
+[lints]
+workspace = true

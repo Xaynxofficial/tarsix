@@ -1,0 +1,15 @@
+[package]
+name = "as-tensor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Public ergonomic, backend-independent N-dimensional Tensor API."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-backend = { path = "../as-backend" }
+as-cpu = { path = "../as-cpu" }
+
+[lints]
+workspace = true

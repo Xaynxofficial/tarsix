@@ -1,0 +1,10 @@
+[package]
+name = "as-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core foundational types, IEEE-754 half/bfloat16, shapes, strides, layouts, and security limits."
+
+[lints]
+workspace = true

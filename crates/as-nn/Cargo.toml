@@ -1,0 +1,15 @@
+[package]
+name = "as-nn"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Modular neural network layers, activations, losses, attention, and Transformer blocks."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-autograd = { path = "../as-autograd" }
+
+[lints]
+workspace = true

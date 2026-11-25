@@ -1,0 +1,13 @@
+[package]
+name = "as-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Zero-dependency reproducible benchmark suite for the independent AI engine."
+
+[dependencies]
+as-tensor = { path = "../as-tensor" }
+
+[lints]
+workspace = true

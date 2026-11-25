@@ -1,0 +1,16 @@
+[package]
+name = "as-autograd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Independent reverse-mode and forward-mode automatic differentiation with gradient checkpointing and numerical gradcheck."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-backend = { path = "../as-backend" }
+as-tensor = { path = "../as-tensor" }
+as-graph = { path = "../as-graph" }
+
+[lints]
+workspace = true

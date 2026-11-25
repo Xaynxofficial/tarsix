@@ -1,0 +1,14 @@
+[package]
+name = "as-io"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Safe, zero-dependency model interoperability: Safetensors reader/writer and model config parsing."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+
+[lints]
+workspace = true

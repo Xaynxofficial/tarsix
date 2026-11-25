@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-test-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy (strict security & pedantic lints)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Run unit and integration tests
+        run: cargo test --workspace
+      - name: Build release benchmarks
+        run: cargo build --release -p as-bench

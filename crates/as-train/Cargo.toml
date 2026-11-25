@@ -1,0 +1,17 @@
+[package]
+name = "as-train"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Complete reproducible training pipeline: Dataset, DataLoader, metrics, and checksum-verified checkpoints."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-autograd = { path = "../as-autograd" }
+as-nn = { path = "../as-nn" }
+as-optim = { path = "../as-optim" }
+
+[lints]
+workspace = true

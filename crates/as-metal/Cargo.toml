@@ -1,0 +1,13 @@
+[package]
+name = "as-metal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Real Apple Silicon Metal GPU compute backend (isolated Objective-C Metal.framework bridge, zero external crates)."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-backend = { path = "../as-backend" }
+as-cpu = { path = "../as-cpu" }
+as-accel = { path = "../as-accel" }

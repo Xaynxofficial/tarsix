@@ -1,0 +1,15 @@
+[package]
+name = "as-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Computational graph IR, topological scheduling, optimization, fusion, and safe serialization."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-backend = { path = "../as-backend" }
+as-tensor = { path = "../as-tensor" }
+
+[lints]
+workspace = true

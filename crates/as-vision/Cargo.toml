@@ -1,0 +1,16 @@
+[package]
+name = "as-vision"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Independent Computer Vision engine: image preprocessing, PatchEmbed, Vision Transformer (ViT), and CNNs."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-autograd = { path = "../as-autograd" }
+as-nn = { path = "../as-nn" }
+
+[lints]
+workspace = true

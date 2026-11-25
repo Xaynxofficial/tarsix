@@ -1,0 +1,21 @@
+[package]
+name = "as-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Command-line interface for the Independent AI Computing Infrastructure."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-autograd = { path = "../as-autograd" }
+as-nn = { path = "../as-nn" }
+as-optim = { path = "../as-optim" }
+as-train = { path = "../as-train" }
+as-io = { path = "../as-io" }
+as-llm = { path = "../as-llm" }
+as-accel = { path = "../as-accel" }
+
+[lints]
+workspace = true

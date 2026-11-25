@@ -1,0 +1,41 @@
+{
+  "name": "tarsix",
+  "version": "0.1.0",
+  "description": "Zero-dependency, memory-safe Rust + WebAssembly AI Tensor Engine for Node.js and Browsers.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./wasm/as_wasm.wasm": "./wasm/as_wasm.wasm"
+  },
+  "files": [
+    "dist",
+    "wasm",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ai",
+    "machine-learning",
+    "tensor",
+    "wasm",
+    "webassembly",
+    "rust",
+    "matmul",
+    "deep-learning",
+    "zero-dependency"
+  ],
+  "scripts": {
+    "build:wasm": "cargo build -p as-wasm --target wasm32-unknown-unknown --release && cp ../../target/wasm32-unknown-unknown/release/as_wasm.wasm ./wasm/as_wasm.wasm",
+    "test": "node ./test_pkg.mjs"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,14 @@
+[package]
+name = "as-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Zero-dependency WebAssembly (wasm32-unknown-unknown) engine bridge for Browser and Node.js TypeScript SDK."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }

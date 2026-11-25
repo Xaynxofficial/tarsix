@@ -1,0 +1,16 @@
+[package]
+name = "as-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Independent model inference runtime with graph optimization, profiling, dynamic batching, and streaming."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-graph = { path = "../as-graph" }
+as-io = { path = "../as-io" }
+
+[lints]
+workspace = true

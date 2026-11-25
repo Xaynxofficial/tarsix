@@ -1,0 +1,13 @@
+[package]
+name = "as-backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Hardware-independent backend and storage trait contracts."
+
+[dependencies]
+as-core = { path = "../as-core" }
+
+[lints]
+workspace = true
