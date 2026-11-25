@@ -31,7 +31,7 @@ pub use bpe::BpeTokenizer;
 pub use hf::{LoadedHfModel, load_hf_model_dir, parse_hf_llm_config};
 pub use kv_cache::KvCache;
 pub use model::{LlmConfig, LlmModel};
-pub use quant::QuantizedLinear;
+pub use quant::{Q4_BLOCK_SIZE, Q4Linear, QuantizedLinear};
 pub use rope::RoPECache;
 pub use sampler::{SamplingConfig, sample_next_token};
 pub use tokenizer::{ByteTokenizer, Tokenizer};

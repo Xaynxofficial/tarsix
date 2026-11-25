@@ -12,8 +12,8 @@
 )]
 
 use as_llm::{
-    BpeTokenizer, ByteTokenizer, LlmConfig, LlmModel, QuantizedLinear, RoPECache, SamplingConfig,
-    Tokenizer, load_hf_model_dir,
+    BpeTokenizer, ByteTokenizer, LlmConfig, LlmModel, Q4Linear, QuantizedLinear, RoPECache,
+    SamplingConfig, Tokenizer, load_hf_model_dir,
 };
 use as_nn::Rng;
 use as_tensor::Tensor;
@@ -91,6 +91,38 @@ fn int8_quantized_linear_accuracy_and_memory_savings() {
     for (&a, &b) in fp_out.iter().zip(q_out.iter()) {
         assert!((a - b).abs() < 0.05, "quant error too large: {a} vs {b}");
     }
+}
+
+#[test]
+fn q4_4bit_quantized_linear_compression_and_accuracy() {
+    // [16, 64] = 1024 f32 weights = 4096 bytes -> Q4 should be 576 bytes (~7.1x compression)
+    let w_vals: Vec<f32> = (0..16 * 64)
+        .map(|i| (((i * 17) % 29) as f32 - 14.0) * 0.05)
+        .collect();
+    let x_vals: Vec<f32> = (0..2 * 64)
+        .map(|i| (((i * 11) % 19) as f32 - 9.0) * 0.1)
+        .collect();
+    let w = Tensor::from_f32(&w_vals, vec![16, 64]).unwrap();
+    let x = Tensor::from_f32(&x_vals, vec![2, 64]).unwrap();
+
+    let fp_out = x
+        .matmul(&w.transpose(0, 1).unwrap())
+        .unwrap()
+        .to_f32_vec()
+        .unwrap();
+    let q4 = Q4Linear::from_f32_weight(&w).unwrap();
+    assert_eq!(q4.storage_bytes(), 576);
+    assert!(q4.compression_ratio() > 7.0);
+
+    let q4_out = q4.forward(&x).unwrap().to_f32_vec().unwrap();
+    let dot: f32 = fp_out.iter().zip(q4_out.iter()).map(|(&a, &b)| a * b).sum();
+    let norm_fp: f32 = fp_out.iter().map(|&a| a * a).sum::<f32>().sqrt();
+    let norm_q4: f32 = q4_out.iter().map(|&b| b * b).sum::<f32>().sqrt();
+    let cosine = dot / (norm_fp * norm_q4);
+    assert!(
+        cosine > 0.99,
+        "Q4 cosine similarity too low: {cosine:.4}"
+    );
 }
 
 #[test]
