@@ -21,6 +21,7 @@
 pub mod activations;
 pub mod init;
 pub mod layers;
+pub mod lora;
 pub mod loss;
 pub mod module;
 pub mod transformer;
@@ -28,6 +29,7 @@ pub mod transformer;
 pub use activations::{gelu, log_softmax, sigmoid, silu, softmax, tanh};
 pub use init::{Rng, kaiming_normal, xavier_uniform};
 pub use layers::{Conv2d, Dropout, Embedding, LayerNorm, Linear, RmsNorm};
+pub use lora::LoRALinear;
 pub use loss::{cross_entropy_loss, mse_loss};
 pub use module::{Module, Param};
 pub use transformer::{MultiHeadAttention, TransformerBlock};
