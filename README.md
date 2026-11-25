@@ -88,8 +88,8 @@ flowchart TB
 | **Automatic Differentiation** | Panic-free reverse-mode `Tape` with broadcast unbroadcasting, differentiable `im2col`/`col2im`, multi-step gradient accumulation, just-in-time recomputing **gradient checkpointing**, forward-mode `DualTensor` (JVP), and central finite-difference `gradcheck`. |
 | **Neural Networks & Training** | Deterministic `Xoshiro256++` PRNG, `Linear`, **`LoRALinear`** (Low-Rank Adaptation + `merge_weights()`), `Embedding`, `LayerNorm`, `RmsNorm`, `Dropout`, `Conv2d`, `MultiHeadAttention`, `TransformerBlock`, `Sgd`/`Adam`/`AdamW`, `StepLr`/`CosineAnnealingLr`, global L2 gradient clipping, CSV dataset I/O, checksummed `ASCK` checkpoints, and automatic **minimal SVG training charts**. |
 | **Model Interoperability & Runtime** | Recursion-bounded JSON parser, zero-dependency **Safetensors** reader/writer (`F32/F64/F16/BF16/I32/I64`), `InferenceSession` with graph optimization, latency profiling, dynamic request batching, and streaming step execution. |
-| **LLM Engine** | Multi-architecture HuggingFace loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`, `TinyLlama`), Grouped-Query Attention (GQA), RoPE, bounded `KvCache`, HuggingFace `tokenizer.json` BPE & `ByteTokenizer`, Int8 per-channel `QuantizedLinear`, and Temperature/Top-k/Top-p streaming generation. |
-| **Computer Vision** | Validated `ImageBuffer`, bilinear resizing, ImageNet CHW normalization, `PatchEmbed`, bidirectional `VisionTransformer` (ViT), `max_pool2d`, and end-to-end trainable `CnnClassifier`. |
+| **LLM Engine** | Multi-architecture HuggingFace loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`, `TinyLlama`), Grouped-Query Attention (GQA), RoPE, bounded `KvCache`, HuggingFace `tokenizer.json` BPE & `ByteTokenizer`, **Int8 `QuantizedLinear` (4×)** & **4-bit `Q4Linear` (~7.1× compression)**, and Temperature/Top-k/Top-p streaming generation. |
+| **Computer Vision** | Validated `ImageBuffer`, bilinear resizing, ImageNet CHW normalization, `PatchEmbed`, bidirectional `VisionTransformer` (ViT), `max_pool2d`, end-to-end trainable `CnnClassifier`, and **trainable YOLO-style `ObjectDetector`** (`BBox`, `iou`, `nms`, `encode_yolo_targets`, `detection_loss`, `decode_detections`). |
 | **Hardware Acceleration** | Multi-core `std::thread::scope` cache-blocked CPU GEMM (100% safe Rust), isolated Apple Silicon `Metal.framework` GPU backend (`as-metal`), versioned MSL/WGSL/CUDA kernel sources, and differential cross-backend numerical consistency testing (`as-accel`). |
 
 ---
@@ -186,7 +186,41 @@ cargo run --release -p as-cli -- predict /tmp/model.asck "0.1,0.1"
 cargo run --release -p as-cli -- demo-chat $'S: merhaba\nC:'
 ```
 
-### 3. Running Real HuggingFace LLMs (Llama / Qwen2 / SmolLM / Mistral)
+### 3. LoRA Fine-Tuning, 4-Bit Quantization (`Q4Linear`) & YOLO Object Detection
+
+**Parameter-Efficient LoRA Fine-Tuning & 4-Bit Compression:**
+```rust
+use as_llm::Q4Linear;
+use as_nn::{Linear, LoRALinear, Rng};
+use as_tensor::DType;
+
+let mut rng = Rng::from_seed(42);
+let base = Linear::new("proj", 512, 512, false, DType::F32, &mut rng)?;
+
+// Wrap frozen base layer with rank-8 LoRA adapters (only ~3% trainable params)
+let lora = LoRALinear::from_linear("proj", &base, 8, 16.0, &mut rng)?;
+// After training: fold LoRA back into base weights for zero-overhead inference
+let merged = lora.merge_weights()?;
+
+// Compress weights to 4-bit blocks (~7.1x smaller than f32)
+let q4 = Q4Linear::from_f32_weight(merged.weight.data())?;
+```
+
+**Trainable YOLO-Style Object Detection (`BBox`, `IoU`, `NMS`):**
+```rust
+use as_autograd::Tape;
+use as_vision::{BBox, LabeledBox, ObjectDetector, decode_detections, detection_loss, encode_yolo_targets};
+
+let detector = ObjectDetector::new(3, 16, 2, 42)?;
+let gt = vec![vec![LabeledBox {
+    bbox: BBox { cx: 0.62, cy: 0.37, w: 0.25, h: 0.25 },
+    class_id: 1,
+}]];
+let target_grid = encode_yolo_targets(&gt, 4, 4, 2)?;
+// Forward + backward on Tape with `detection_loss`, then decode with `decode_detections(..., 0.5, 0.5)`
+```
+
+### 4. Running Real HuggingFace LLMs (Llama / Qwen2 / SmolLM / Mistral)
 
 ```bash
 # 1. Download a compact Safetensors model (e.g., SmolLM2-135M-Instruct, ~270 MB)
@@ -200,7 +234,7 @@ cd /path/to/tarsix
 cargo run --release -p as-cli -- run-llm /tmp/smollm2 "Artificial intelligence is" 40 0.7
 ```
 
-### 4. TypeScript / JavaScript (`npm install tarsix`)
+### 5. TypeScript / JavaScript (`npm install tarsix`)
 
 Works in **Node.js (>=18)** and **Web Browsers** with the **114 KiB** WebAssembly engine bundled — zero external dependencies, no Rust or Python required:
 
@@ -222,7 +256,7 @@ console.log(out.toF32Array()); // Float32Array(4) [ 20, 20, 44, 48 ]
 a.dispose(); b.dispose(); bias.dispose(); out.dispose();
 ```
 
-### 5. Python (`ctypes`) & C / C++ (`include/tarsix.h`)
+### 6. Python (`ctypes`) & C / C++ (`include/tarsix.h`)
 
 Calls the native multi-core Rust library directly via C ABI with zero `pip` dependencies:
 
