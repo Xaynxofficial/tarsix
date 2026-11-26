@@ -21,8 +21,10 @@ pub mod comm;
 pub mod ddp;
 pub mod local;
 pub mod tcp;
+pub mod tp;
 
 pub use comm::{AllReduceOp, Communicator, RingTransport};
 pub use ddp::DistributedDataParallel;
 pub use local::{LocalCluster, LocalCommunicator};
 pub use tcp::{DEFAULT_MAX_FRAME_BYTES, TcpCommunicator};
+pub use tp::{ColumnParallelLinear, RowParallelLinear, TensorParallelMlp};

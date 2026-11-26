@@ -65,6 +65,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "as-cuda"
+version = "0.1.0"
+dependencies = [
+ "as-backend",
+ "as-core",
+ "as-cpu",
+]
+
+[[package]]
 name = "as-dist"
 version = "0.1.0"
 dependencies = [

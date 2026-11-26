@@ -30,13 +30,14 @@ Tarsix treats every external model file, serialized graph, checkpoint, dataset, 
 
 ---
 
-## FFI & `unsafe` Isolation Policy (`as-metal` and `as-wasm`)
+## FFI & `unsafe` Isolation Policy (`as-metal`, `as-cuda`, and `as-wasm`)
 
-In Cargo, `[workspace.lints]` is **opt-in per crate** via `[lints] workspace = true`. This allows Tarsix to enforce `unsafe_code = "forbid"` strictly across all 21 core crates while isolating unavoidable platform FFI into exactly **two dedicated boundary crates** that intentionally omit `[lints] workspace = true`:
+In Cargo, `[workspace.lints]` is **opt-in per crate** via `[lints] workspace = true`. This allows Tarsix to enforce `unsafe_code = "forbid"` strictly across all 21 core crates while isolating unavoidable platform FFI into exactly **three dedicated boundary crates** that intentionally omit `[lints] workspace = true`:
 
 | Boundary Crate | Purpose of Isolated `unsafe` | Mandatory Safeguards |
 | :--- | :--- | :--- |
-| **`crates/as-metal`** | Narrow Objective-C / C-ABI bridge to Apple's `Metal.framework` GPU driver on macOS (`aarch64`). | All shapes, dtypes, strides, and `MemoryLimits` are validated in safe Rust before crossing FFI; every `unsafe` block documents explicit `// SAFETY:` invariants; outputs are differentially tested against the safe `as-cpu` reference backend. |
+| **`crates/as-metal`** | Narrow Objective-C / C-ABI bridge to Apple's `Metal.framework` GPU driver on macOS (`aarch64`), including Unified Memory `MetalBuffer` and batched command encoding. | All shapes, dtypes, strides, and `MemoryLimits` are validated in safe Rust before crossing FFI; every `unsafe` block documents explicit `// SAFETY:` invariants; outputs are differentially tested against the safe `as-cpu` reference backend. |
+| **`crates/as-cuda`** | Runtime `dlopen` C-ABI bridge to `libcudart.so` and `libcublas.so` on Linux NVIDIA GPU hosts (zero build-time CUDA Toolkit dependency). | All shapes, lengths, and `MemoryLimits` are checked before device allocation; device buffers are unconditionally freed on all error paths; clean `Result::Err` fallback on non-CUDA hosts. |
 | **`crates/as-wasm`** | C-ABI (`extern "C"`) and WebAssembly (`wasm32-unknown-unknown`) `cdylib` exports for TypeScript, Python (`ctypes`), and C/C++ (`include/tarsix.h`). | Raw pointers and lengths from foreign callers are null-checked and bounds-checked at the FFI entry point before constructing slices; internal tensor state is referenced via opaque integer handles rather than exposing raw Rust pointers. |
 
 ### Rules for Any Future Hardware Backend (e.g. CUDA, WebGPU, SIMD)

@@ -21,6 +21,7 @@ members = [
     "crates/as-vision",
     "crates/as-accel",
     "crates/as-metal",
+    "crates/as-cuda",
     "crates/as-wasm",
     "crates/as-cli",
     "crates/as-bench",

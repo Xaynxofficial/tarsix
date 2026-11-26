@@ -1,0 +1,12 @@
+[package]
+name = "as-cuda"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Isolated NVIDIA CUDA / cuBLAS dynamic FFI backend (zero external Rust crates, runtime dlopen)."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-backend = { path = "../as-backend" }
+as-cpu = { path = "../as-cpu" }

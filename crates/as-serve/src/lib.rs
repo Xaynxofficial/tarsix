@@ -17,9 +17,14 @@
 )]
 
 pub mod batcher;
+pub mod continuous;
 pub mod http;
 pub mod server;
 
 pub use batcher::{BatchConfig, BatcherStats, DynamicBatcher};
+pub use continuous::{
+    ActiveSequence, ContinuousBatchConfig, ContinuousBatchStats, ContinuousBatcher,
+    SequenceRequest, StepGenerator, TokenStepOutput,
+};
 pub use http::{HttpRequest, HttpResponse};
 pub use server::{InferenceServer, ServerConfig, ServerHandle, ServerMetrics};

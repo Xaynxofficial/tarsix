@@ -97,10 +97,10 @@ flowchart TB
 | **Automatic Differentiation** | Panic-free reverse-mode `Tape` with broadcast unbroadcasting, differentiable `im2col`/`col2im`, multi-step gradient accumulation, just-in-time recomputing **gradient checkpointing**, forward-mode `DualTensor` (JVP), and central finite-difference `gradcheck`. |
 | **Training Pipeline & NN** | Declarative **`Trainer` engine** (`as-train`) with microbatch **gradient accumulation**, **loss scaling**, global L2 clipping, pluggable **`Callback` hooks** (`EarlyStopping`, `BestCheckpointCallback`, `JsonlLoggerCallback`), checksummed full-resume **`TrainState` (`ASTS`)**, `LoRALinear`, `TransformerBlock`, `AdamW`, `CosineAnnealingLr`, CSV I/O, and SVG charts. |
 | **Model Hub & Interop** | Zero-dependency **`as-hub`** with pure safe Rust **FIPS 180-4 SHA-256**, content-addressable `ModelCache`, searchable `ModelCard`/`ModelQuery` registry, **Sharded Safetensors (`model.safetensors.index.json`)** loader with path-traversal blocking, and bounded JSON/Safetensors parser (`as-io`). |
-| **Inference Server** | Zero-dependency hardened **HTTP/1.1 + SSE** server (`as-serve`) with real concurrent **`DynamicBatcher`** (`max_batch_size` + `max_wait_ms`), OpenAI-compatible `/v1/chat/completions` (JSON & SSE streaming), `/v1/infer`, `/v1/models`, `/health`, and **Prometheus `/metrics`**. |
-| **Distributed Compute** | Zero-dependency **`as-dist`** with bandwidth-optimal **Ring-AllReduce** (`Sum`/`Mean`/`Max`/`Min`), `Broadcast`, `AllGather`, `Barrier`, local multi-thread `LocalCluster`, multi-machine **`TcpCommunicator`** (`ASDC` checksummed framing), and **`DistributedDataParallel` (DDP)**. |
-| **LLM & Vision Engines** | Multi-architecture HuggingFace LLM loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`), GQA, RoPE, `KvCache`, BPE tokenizer, **Int8 & 4-bit `Q4Linear`**, plus **ViT**, **CNN**, and trainable **YOLO `ObjectDetector`** (`BBox`, `IoU`, `NMS`). |
-| **Hardware Acceleration** | Multi-core `std::thread::scope` cache-blocked CPU GEMM (100% safe Rust), isolated Apple Silicon `Metal.framework` GPU backend (`as-metal`), versioned MSL/WGSL/CUDA kernel sources, and differential cross-backend consistency testing (`as-accel`). |
+| **Inference Server** | Zero-dependency hardened **HTTP/1.1 + SSE** server (`as-serve`) with real concurrent **`DynamicBatcher`**, vLLM-style **`ContinuousBatcher`** (iteration-level token scheduling), OpenAI-compatible `/v1/chat/completions` (JSON & SSE streaming), `/v1/infer`, `/v1/models`, `/health`, and **Prometheus `/metrics`**. |
+| **Distributed Compute** | Zero-dependency **`as-dist`** with bandwidth-optimal **Ring-AllReduce** (`Sum`/`Mean`/`Max`/`Min`), `Broadcast`, `AllGather`, `Barrier`, local `LocalCluster`, multi-machine **`TcpCommunicator`** (`ASDC` checksummed framing), **`DistributedDataParallel` (DDP)**, and Megatron-LM **Tensor Parallelism** (`ColumnParallelLinear`, `RowParallelLinear`, `TensorParallelMlp`). |
+| **LLM & Vision Engines** | Multi-architecture HuggingFace LLM loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`), GQA, RoPE, **`PagedKvCache` (PagedAttention + CoW prefix sharing)**, BPE tokenizer, **Int8 & 4-bit `Q4Linear`**, plus **ViT**, **CNN**, and trainable **YOLO `ObjectDetector`** (`BBox`, `IoU`, `NMS`). |
+| **Hardware Acceleration** | Multi-core `std::thread::scope` cache-blocked CPU GEMM (100% safe Rust), Apple Silicon **`as-metal`** (Zero-Copy Unified Memory `MetalBuffer`, `MetalCommandBatch`, Tiled GEMM, RMSNorm, Softmax, SwiGLU, RoPE, Q4 MatVec), dynamic **`as-cuda`** (Linux NVIDIA CUDA / `cuBLAS` `dlopen` driver + LLM CUDA kernels), and differential consistency testing (`as-accel`). |
 
 ---
 
@@ -110,7 +110,7 @@ Tarsix treats every external model file, serialized graph, dataset, and shape he
 
 | Threat Class | Mitigation Enforced |
 | :--- | :--- |
-| Memory corruption & data races | `[workspace.lints.rust] unsafe_code = "forbid"` inherited via `[lints] workspace = true` across all 21 core crates; isolated audited FFI only in `as-metal` & `as-wasm` (which omit workspace lint inheritance; see [SECURITY.md](SECURITY.md)). |
+| Memory corruption & data races | `[workspace.lints.rust] unsafe_code = "forbid"` inherited via `[lints] workspace = true` across all 21 core crates; isolated audited FFI only in `as-metal`, `as-cuda`, & `as-wasm` (which omit workspace lint inheritance; see [SECURITY.md](SECURITY.md)). |
 | Runtime panics / DoS crashes | Workspace Clippy denies `unwrap_used`, `expect_used`, `panic`; all fallible APIs return `Result<T>`. |
 | Integer overflow in shape/stride math | `overflow-checks = true` in release profile + `checked_mul`/`checked_add` everywhere. |
 | OOM allocation bombs | Pre-allocation `MemoryLimits` (`max_tensor_bytes`, `MAX_RANK = 16`, `MAX_IMAGE_DIM = 16_384`). |
@@ -317,13 +317,14 @@ Reproducible measurements collected via `cargo run --release -p as-bench` on **A
 ## Workspace Crates
 
 <details>
-<summary><strong>Inspect all 23 crates & SDKs</strong></summary>
+<summary><strong>Inspect all 24 crates & SDKs</strong></summary>
 
 - `crates/as-core` — Core types, errors, `MemoryLimits`, `F16`/`BF16`, `Shape`, `Layout`
 - `crates/as-memory` — Memory Engine: lock-free `MemoryTracker`, `BufferPool`, static interval-coloring `MemoryPlan`
 - `crates/as-backend` — `Backend` and `Storage` hardware abstraction traits
 - `crates/as-cpu` — Safe multi-core tiled CPU execution engine
-- `crates/as-metal` — Apple Silicon `Metal.framework` GPU backend
+- `crates/as-metal` — Apple Silicon `Metal.framework` GPU backend (Unified Memory, command batching, LLM MSL kernels)
+- `crates/as-cuda` — Dynamic NVIDIA CUDA / cuBLAS `dlopen` FFI backend + LLM CUDA kernel sources
 - `crates/as-tensor` — Public `Tensor<B>` Rust API
 - `crates/as-graph` — Graph Compiler (`O0`–`O3`), Constant Folding, CSE, Algebraic Simplify, `FusedLinear`, shape inference, `ASGR` codec
 - `crates/as-scheduler` — Hardware Scheduler: dynamic CPU/Metal discovery, cost-model placement, parallel DAG wave execution
