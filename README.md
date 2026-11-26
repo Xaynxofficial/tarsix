@@ -110,7 +110,7 @@ Tarsix treats every external model file, serialized graph, dataset, and shape he
 
 | Threat Class | Mitigation Enforced |
 | :--- | :--- |
-| Memory corruption & data races | `#![forbid(unsafe_code)]` across all 21 core crates; narrow audited FFI only in `as-metal` & `as-wasm`. |
+| Memory corruption & data races | `[workspace.lints.rust] unsafe_code = "forbid"` inherited via `[lints] workspace = true` across all 21 core crates; isolated audited FFI only in `as-metal` & `as-wasm` (which omit workspace lint inheritance; see [SECURITY.md](SECURITY.md)). |
 | Runtime panics / DoS crashes | Workspace Clippy denies `unwrap_used`, `expect_used`, `panic`; all fallible APIs return `Result<T>`. |
 | Integer overflow in shape/stride math | `overflow-checks = true` in release profile + `checked_mul`/`checked_add` everywhere. |
 | OOM allocation bombs | Pre-allocation `MemoryLimits` (`max_tensor_bytes`, `MAX_RANK = 16`, `MAX_IMAGE_DIM = 16_384`). |
