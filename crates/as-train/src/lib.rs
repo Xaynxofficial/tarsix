@@ -16,6 +16,7 @@ pub mod csv;
 pub mod data;
 pub mod metrics;
 pub mod plot;
+pub mod trainer;
 
 pub use checkpoint::{inspect_checkpoint_shapes, load_checkpoint, save_checkpoint};
 pub use csv::{
@@ -25,3 +26,7 @@ pub use csv::{
 pub use data::{Batch, DataLoader, Dataset, InMemoryDataset, Sample};
 pub use metrics::{EpochMetrics, MetricsTracker, classification_accuracy};
 pub use plot::render_training_svg;
+pub use trainer::{
+    BestCheckpointCallback, Callback, CallbackAction, EarlyStopping, EpochContext,
+    JsonlLoggerCallback, StepContext, TrainConfig, TrainReport, TrainState, Trainer,
+};

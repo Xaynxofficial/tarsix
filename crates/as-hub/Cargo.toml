@@ -1,0 +1,15 @@
+[package]
+name = "as-hub"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Zero-dependency Model Hub: searchable registry, SHA-256 content-addressable cache, and sharded Safetensors loader."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-io = { path = "../as-io" }
+
+[lints]
+workspace = true

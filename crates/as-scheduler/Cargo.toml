@@ -1,0 +1,18 @@
+[package]
+name = "as-scheduler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Hardware scheduler with dynamic CPU/GPU discovery, cost-model op placement, and parallel DAG wave execution."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-backend = { path = "../as-backend" }
+as-cpu = { path = "../as-cpu" }
+as-metal = { path = "../as-metal" }
+as-tensor = { path = "../as-tensor" }
+as-graph = { path = "../as-graph" }
+
+[lints]
+workspace = true

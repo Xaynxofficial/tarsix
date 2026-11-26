@@ -19,5 +19,6 @@
 pub mod profiler;
 pub mod session;
 
-pub use profiler::{InferenceProfile, RunStats};
+pub use as_graph::OptLevel;
+pub use profiler::{BottleneckKind, InferenceProfile, OpProfile, RunStats};
 pub use session::{InferenceSession, RuntimeConfig};

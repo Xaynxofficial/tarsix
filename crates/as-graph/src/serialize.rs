@@ -295,6 +295,20 @@ fn encode_op(buf: &mut Vec<u8>, op: &Op) {
             }
             buf.push(u8::from(*keepdim));
         }
+        Op::FusedLinear {
+            has_bias,
+            activation,
+        } => {
+            buf.push(9);
+            buf.push(u8::from(*has_bias));
+            match activation {
+                None => buf.push(0),
+                Some(u) => {
+                    buf.push(1);
+                    encode_unary(buf, *u);
+                }
+            }
+        }
     }
 }
 
@@ -388,6 +402,23 @@ fn decode_op(r: &mut SafeReader<'_>) -> Result<Op> {
             };
             let keepdim = r.read_u8()? != 0;
             Ok(Op::Reduce { op, axis, keepdim })
+        }
+        9 => {
+            let has_bias = r.read_u8()? != 0;
+            let activation = match r.read_u8()? {
+                0 => None,
+                1 => Some(decode_unary(r)?),
+                _ => {
+                    return Err(Error::InvalidArgument {
+                        context: "deserialize_graph",
+                        reason: "invalid fused linear activation tag".to_owned(),
+                    });
+                }
+            };
+            Ok(Op::FusedLinear {
+                has_bias,
+                activation,
+            })
         }
         tag => Err(Error::InvalidArgument {
             context: "deserialize_graph",

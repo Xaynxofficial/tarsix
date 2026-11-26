@@ -5,10 +5,11 @@ use std::time::Instant;
 
 use as_core::{Device, Error, MemoryLimits, Result};
 use as_graph::{
-    Graph, NodeId, Op, OptimizationReport, deserialize_graph, execute_graph, optimize_graph,
-    serialize_graph,
+    CompilationReport, Graph, NodeId, Op, OptLevel, OptimizationReport, compile_graph,
+    deserialize_graph, execute_graph, execute_graph_profiled, serialize_graph,
 };
 use as_io::{SafeTensors, deserialize_safetensors};
+use as_memory::MemoryPlan;
 use as_tensor::Tensor;
 
 use crate::profiler::InferenceProfile;
@@ -20,9 +21,11 @@ pub struct RuntimeConfig {
     pub device: Device,
     /// Security and resource ceilings enforced during model loading and execution.
     pub limits: MemoryLimits,
-    /// Whether to run graph optimization (DCE + Unary Fusion) upon session creation.
+    /// Whether to run graph optimization upon session creation.
     pub enable_optimization: bool,
-    /// Whether to record execution timing profiles.
+    /// Compiler optimization level used when `enable_optimization` is `true`.
+    pub opt_level: OptLevel,
+    /// Whether to record detailed per-operator execution profiles.
     pub enable_profiling: bool,
     /// Maximum number of requests combined in a single dynamic batch chunk.
     pub max_batch_size: usize,
@@ -34,18 +37,21 @@ impl Default for RuntimeConfig {
             device: Device::Cpu,
             limits: MemoryLimits::default(),
             enable_optimization: true,
+            opt_level: OptLevel::O3,
             enable_profiling: true,
             max_batch_size: 32,
         }
     }
 }
 
-/// Independent model inference session backed by an optimized [`Graph`] and bound weights.
+/// Independent model inference session backed by a compiled [`Graph`] and bound weights.
 #[derive(Debug, Clone)]
 pub struct InferenceSession {
     graph: Graph,
     config: RuntimeConfig,
     optimization: Option<OptimizationReport>,
+    compilation: Option<CompilationReport>,
+    memory_plan: Option<MemoryPlan>,
     input_name_map: BTreeMap<String, NodeId>,
     bound_weights: HashMap<NodeId, Tensor>,
 }
@@ -69,13 +75,36 @@ impl InferenceSession {
             });
         }
 
-        let (active_graph, optimization) = if config.enable_optimization {
-            let (opt_g, report) = optimize_graph(&graph)?;
-            (opt_g, Some(report))
+        let effective_level = if config.enable_optimization {
+            config.opt_level
         } else {
-            (graph, None)
+            OptLevel::O0
         };
+        let compiled = compile_graph(&graph, effective_level)?;
+        let optimization = config.enable_optimization.then(|| {
+            let dead_removed: usize = compiled
+                .report
+                .pass_stats
+                .iter()
+                .filter(|p| p.pass_name == "dead_code_elimination")
+                .map(|p| p.rewrites)
+                .sum();
+            let unary_fused: usize = compiled
+                .report
+                .pass_stats
+                .iter()
+                .filter(|p| p.pass_name == "unary_fusion")
+                .map(|p| p.rewrites)
+                .sum();
+            OptimizationReport {
+                nodes_before: compiled.report.nodes_before,
+                nodes_after: compiled.report.nodes_after,
+                dead_nodes_removed: dead_removed,
+                unary_ops_fused: unary_fused,
+            }
+        });
 
+        let active_graph = compiled.graph;
         let mut input_name_map = BTreeMap::new();
         for node in active_graph.nodes() {
             if let Op::Input { name, .. } = &node.op {
@@ -87,6 +116,8 @@ impl InferenceSession {
             graph: active_graph,
             config,
             optimization,
+            compilation: Some(compiled.report),
+            memory_plan: Some(compiled.memory_plan),
             input_name_map,
             bound_weights: HashMap::new(),
         })
@@ -136,6 +167,16 @@ impl InferenceSession {
         &self.config
     }
 
+    /// Returns the static buffer-reuse [`MemoryPlan`] computed during compilation.
+    pub fn memory_plan(&self) -> Option<&MemoryPlan> {
+        self.memory_plan.as_ref()
+    }
+
+    /// Returns the compiler [`CompilationReport`] produced during session creation.
+    pub fn compilation_report(&self) -> Option<&CompilationReport> {
+        self.compilation.as_ref()
+    }
+
     /// Executes a single inference pass with named runtime inputs merged with bound weights.
     pub fn run_named(
         &self,
@@ -154,14 +195,21 @@ impl InferenceSession {
             feed.insert(node_id, tensor.clone());
         }
 
-        let start = self.config.enable_profiling.then(Instant::now);
-        let outputs = execute_graph(&self.graph, &feed)?;
-        let profile = start.map(|t0| InferenceProfile {
-            total_duration_us: t0.elapsed().as_micros(),
-            executed_nodes: self.graph.nodes().len(),
-            optimization: self.optimization,
-        });
-        Ok((outputs, profile))
+        if self.config.enable_profiling {
+            let t0 = Instant::now();
+            let (outputs, records) = execute_graph_profiled(&self.graph, &feed)?;
+            let profile = InferenceProfile::from_records(
+                t0.elapsed().as_micros(),
+                records,
+                self.optimization,
+                self.compilation.clone(),
+                self.memory_plan.clone(),
+            );
+            Ok((outputs, Some(profile)))
+        } else {
+            let outputs = execute_graph(&self.graph, &feed)?;
+            Ok((outputs, None))
+        }
     }
 
     /// Executes a dynamic batch of requests in chunks up to `config.max_batch_size`.

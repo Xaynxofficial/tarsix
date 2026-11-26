@@ -8,9 +8,13 @@ description = "Independent model inference runtime with graph optimization, prof
 
 [dependencies]
 as-core = { path = "../as-core" }
+as-memory = { path = "../as-memory" }
 as-tensor = { path = "../as-tensor" }
 as-graph = { path = "../as-graph" }
 as-io = { path = "../as-io" }
+
+[dev-dependencies]
+as-backend = { path = "../as-backend" }
 
 [lints]
 workspace = true

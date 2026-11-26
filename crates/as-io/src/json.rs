@@ -28,6 +28,29 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
+    /// Looks up a field by `key` when this value is a JSON object.
+    pub fn get(&self, key: &str) -> Option<&Self> {
+        self.as_object()?.get(key)
+    }
+
+    /// Returns this value as a boolean.
+    pub const fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Returns this value as a non-negative `u64` if exact.
+    pub fn as_u64(&self) -> Option<u64> {
+        let n = self.as_f64()?;
+        if n.is_finite() && n >= 0.0 && n.fract() == 0.0 && n <= (u64::MAX as f64) {
+            Some(n as u64)
+        } else {
+            None
+        }
+    }
+
     /// Borrows this value as a JSON object map.
     pub fn as_object(&self) -> Option<&BTreeMap<String, JsonValue>> {
         match self {

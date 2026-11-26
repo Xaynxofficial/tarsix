@@ -11,7 +11,7 @@
 [![Dependencies](https://img.shields.io/badge/core%20dependencies-0-0f766e?style=flat-square)](Cargo.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-111827?style=flat-square)](LICENSE)
 
-*Written from scratch in Rust — N-D Tensors, Computational Graphs, Autograd, Neural Networks, Training, Safetensors, Multi-Architecture LLMs, Computer Vision, Apple Silicon Metal GPU, 114 KiB WebAssembly, Python & C/C++ ABI.*
+*Written from scratch in Rust — N-D Tensors, Memory Engine, Graph Compiler, Hardware Scheduler, Autograd, Training Pipeline, Model Hub, Model Profiler, Inference Server, Distributed Compute, Multi-Architecture LLMs, Computer Vision, Apple Silicon Metal GPU, 114 KiB WebAssembly, Python & C/C++ ABI.*
 
 [Architecture](#architecture) · [Core Capabilities](#core-capabilities) · [Security Model](#security--reliability) · [Quick Start](#quick-start) · [Benchmarks](#benchmarks) · [Crates](#workspace-crates)
 
@@ -25,7 +25,7 @@
 
 Modern AI stacks routinely carry gigabytes of Python runtimes, hundreds of transitive dependencies, and C/C++ memory-safety liabilities when parsing untrusted weights. Tarsix is engineered around four strict principles:
 
-1. **Zero-Dependency Core** — All 16 core Rust crates compile with zero external dependencies, eliminating transitive supply-chain risk.
+1. **Zero-Dependency Core** — All 21 core Rust crates compile with zero external dependencies, eliminating transitive supply-chain risk.
 2. **Memory-Safe & Panic-Free** — Workspace-wide `#![forbid(unsafe_code)]` in core crates, Clippy-enforced denial of `unwrap`, `expect`, and `panic`, and release-mode integer overflow checks (`overflow-checks = true`).
 3. **Untrusted-Input Hardening** — External model weights, graphs, CSVs, and images are validated against explicit `MemoryLimits`, rank ceilings, recursion caps, and cryptographic-style integrity checksums before allocation.
 4. **Single Core, Universal Targets** — One Rust computation foundation powering native Rust services, Apple Silicon Metal GPUs, a **40 kB gzipped (114 KiB raw)** WebAssembly npm package (`tarsix`), Python (`ctypes`), and C/C++ (`tarsix.h`).
@@ -38,27 +38,32 @@ Tarsix enforces a strict acyclic workspace hierarchy separating mathematical sem
 
 ```mermaid
 flowchart TB
-    subgraph Interfaces["Language & Developer Interfaces"]
+    subgraph Interfaces["Language, Serving & Developer Interfaces"]
         CLI["as-cli"]
+        SRV["as-serve (HTTP/1.1 + SSE Inference Server / Dynamic Batching)"]
+        HUB["as-hub (Model Hub / SHA-256 Cache / Sharded Safetensors)"]
         TS["npm: tarsix (WASM / TypeScript)"]
         PY["Python (ctypes) & C/C++ (tarsix.h)"]
     end
 
-    subgraph Applications["Domain Engines & Runtime"]
+    subgraph Applications["Domain Engines, Training & Distributed"]
         LLM["as-llm (Llama / Qwen2 / SmolLM / Mistral)"]
-        VIS["as-vision (ViT / CNN / Preprocess)"]
-        TRN["as-train & as-optim (AdamW / CSV / ASCK)"]
-        RT["as-runtime & as-io (Safetensors / Profiling)"]
+        VIS["as-vision (ViT / CNN / YOLO)"]
+        DIST["as-dist (Ring-AllReduce / TCP Cluster / DDP)"]
+        TRN["as-train & as-optim (Trainer Engine / Callbacks / ASCK / ASTS)"]
+        RT["as-runtime & as-io (Profiler / Chrome Trace / SVG / Safetensors)"]
     end
 
-    subgraph Compute["Differentiation, Graphs & Layers"]
-        NN["as-nn (Layers / Attention / Transformer)"]
+    subgraph Compute["Scheduling, Differentiation, Compiler & Layers"]
+        SCHED["as-scheduler (CPU/GPU Cost-Model Placement / DAG Waves)"]
+        NN["as-nn (Layers / LoRA / Attention / Transformer)"]
         AG["as-autograd (Reverse Tape / JVP / Checkpoint)"]
-        GR["as-graph (DAG IR / DCE / Unary Fusion / ASGR)"]
+        GR["as-graph (Graph Compiler: O0-O3 / Folding / CSE / FusedLinear / ASGR)"]
     end
 
-    subgraph Foundation["Tensor & Hardware Abstraction"]
+    subgraph Foundation["Tensor, Memory & Hardware Abstraction"]
         TEN["as-tensor (Public N-D Tensor API)"]
+        MEM["as-memory (Memory Engine: Budget Tracker / BufferPool / Static Planner)"]
         BE["as-backend (Backend & Storage Traits)"]
         CORE["as-core (DType / F16 / BF16 / Shape / Limits)"]
     end
@@ -72,8 +77,10 @@ flowchart TB
     Interfaces --> Applications
     Applications --> Compute
     Compute --> TEN
+    Compute --> MEM
     TEN --> BE
     BE --> CORE
+    MEM --> CORE
     BE --> Hardware
 ```
 
@@ -83,14 +90,17 @@ flowchart TB
 
 | Subsystem | Key Engineering Features |
 | :--- | :--- |
-| **Tensor Engine** | N-dimensional tensors, zero-copy `Shape`/`Stride`/`Offset` view algebra (`transpose`, `permute`, `slice`, `reshape`, `broadcast_to`), independent IEEE-754 `F16` & `BF16` (round-to-nearest-even, exhaustively verified across all 65,536 bit patterns), `F32`, `F64`, `I32`, `I64`. |
-| **Computational Graph** | Iterative Kahn topological scheduler with cycle detection, Dead-Code Elimination (DCE), single-pass Unary Operation Fusion (`FusedUnaryChain`), liveness-based intermediate buffer release, checksummed `ASGR` binary serialization. |
+| **Tensor & Memory Engine** | N-dimensional tensors, zero-copy `Shape`/`Stride`/`Offset` view algebra, independent IEEE-754 `F16` & `BF16` (exhaustively verified across all 65,536 bit patterns), plus **`as-memory`**: lock-free global `MemoryTracker` + RAII `MemoryLease`, power-of-two `BufferPool`/`TensorBufferPool`, and interval-coloring **Static Graph Memory Planner** (`plan_memory_reuse`). |
+| **Graph Compiler** | Modular `PassPipeline` (`OptLevel::O0..=O3`) with **Constant Folding**, **Algebraic Simplification**, **Common Subexpression Elimination (CSE)**, **Dead-Code Elimination (DCE)**, **Unary Chain Fusion**, **Linear+Bias+Activation Fusion (`Op::FusedLinear`)**, static shape/dtype inference, and checksummed `ASGR` binary serialization. |
+| **Hardware Scheduler** | Dynamic host CPU + live Apple Silicon Metal GPU discovery (`DeviceRegistry`), **Roofline Cost-Model Op Placement** (`CpuOnly`, `PreferGpu`, `CostModelAuto`), **ASAP Parallel DAG Wave Scheduler**, and `std::thread::scope` multi-branch concurrent execution (`as-scheduler`). |
+| **Model Profiler & Runtime** | Op-level execution profiling (`OpProfile`), FLOPs & memory bandwidth (GB/s), **Roofline Bottleneck Classification** (`ComputeBound`/`MemoryBound`/`Overhead`), peak live memory tracking, **`chrome://tracing` / Perfetto JSON export**, **SVG Flamegraph timelines**, and CLI/Markdown summary tables (`as-runtime`). |
 | **Automatic Differentiation** | Panic-free reverse-mode `Tape` with broadcast unbroadcasting, differentiable `im2col`/`col2im`, multi-step gradient accumulation, just-in-time recomputing **gradient checkpointing**, forward-mode `DualTensor` (JVP), and central finite-difference `gradcheck`. |
-| **Neural Networks & Training** | Deterministic `Xoshiro256++` PRNG, `Linear`, **`LoRALinear`** (Low-Rank Adaptation + `merge_weights()`), `Embedding`, `LayerNorm`, `RmsNorm`, `Dropout`, `Conv2d`, `MultiHeadAttention`, `TransformerBlock`, `Sgd`/`Adam`/`AdamW`, `StepLr`/`CosineAnnealingLr`, global L2 gradient clipping, CSV dataset I/O, checksummed `ASCK` checkpoints, and automatic **minimal SVG training charts**. |
-| **Model Interoperability & Runtime** | Recursion-bounded JSON parser, zero-dependency **Safetensors** reader/writer (`F32/F64/F16/BF16/I32/I64`), `InferenceSession` with graph optimization, latency profiling, dynamic request batching, and streaming step execution. |
-| **LLM Engine** | Multi-architecture HuggingFace loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`, `TinyLlama`), Grouped-Query Attention (GQA), RoPE, bounded `KvCache`, HuggingFace `tokenizer.json` BPE & `ByteTokenizer`, **Int8 `QuantizedLinear` (4×)** & **4-bit `Q4Linear` (~7.1× compression)**, and Temperature/Top-k/Top-p streaming generation. |
-| **Computer Vision** | Validated `ImageBuffer`, bilinear resizing, ImageNet CHW normalization, `PatchEmbed`, bidirectional `VisionTransformer` (ViT), `max_pool2d`, end-to-end trainable `CnnClassifier`, and **trainable YOLO-style `ObjectDetector`** (`BBox`, `iou`, `nms`, `encode_yolo_targets`, `detection_loss`, `decode_detections`). |
-| **Hardware Acceleration** | Multi-core `std::thread::scope` cache-blocked CPU GEMM (100% safe Rust), isolated Apple Silicon `Metal.framework` GPU backend (`as-metal`), versioned MSL/WGSL/CUDA kernel sources, and differential cross-backend numerical consistency testing (`as-accel`). |
+| **Training Pipeline & NN** | Declarative **`Trainer` engine** (`as-train`) with microbatch **gradient accumulation**, **loss scaling**, global L2 clipping, pluggable **`Callback` hooks** (`EarlyStopping`, `BestCheckpointCallback`, `JsonlLoggerCallback`), checksummed full-resume **`TrainState` (`ASTS`)**, `LoRALinear`, `TransformerBlock`, `AdamW`, `CosineAnnealingLr`, CSV I/O, and SVG charts. |
+| **Model Hub & Interop** | Zero-dependency **`as-hub`** with pure safe Rust **FIPS 180-4 SHA-256**, content-addressable `ModelCache`, searchable `ModelCard`/`ModelQuery` registry, **Sharded Safetensors (`model.safetensors.index.json`)** loader with path-traversal blocking, and bounded JSON/Safetensors parser (`as-io`). |
+| **Inference Server** | Zero-dependency hardened **HTTP/1.1 + SSE** server (`as-serve`) with real concurrent **`DynamicBatcher`** (`max_batch_size` + `max_wait_ms`), OpenAI-compatible `/v1/chat/completions` (JSON & SSE streaming), `/v1/infer`, `/v1/models`, `/health`, and **Prometheus `/metrics`**. |
+| **Distributed Compute** | Zero-dependency **`as-dist`** with bandwidth-optimal **Ring-AllReduce** (`Sum`/`Mean`/`Max`/`Min`), `Broadcast`, `AllGather`, `Barrier`, local multi-thread `LocalCluster`, multi-machine **`TcpCommunicator`** (`ASDC` checksummed framing), and **`DistributedDataParallel` (DDP)**. |
+| **LLM & Vision Engines** | Multi-architecture HuggingFace LLM loader (`Llama-2/3`, `Qwen2/2.5`, `SmolLM/SmolLM2`, `Mistral`), GQA, RoPE, `KvCache`, BPE tokenizer, **Int8 & 4-bit `Q4Linear`**, plus **ViT**, **CNN**, and trainable **YOLO `ObjectDetector`** (`BBox`, `IoU`, `NMS`). |
+| **Hardware Acceleration** | Multi-core `std::thread::scope` cache-blocked CPU GEMM (100% safe Rust), isolated Apple Silicon `Metal.framework` GPU backend (`as-metal`), versioned MSL/WGSL/CUDA kernel sources, and differential cross-backend consistency testing (`as-accel`). |
 
 ---
 
@@ -100,7 +110,7 @@ Tarsix treats every external model file, serialized graph, dataset, and shape he
 
 | Threat Class | Mitigation Enforced |
 | :--- | :--- |
-| Memory corruption & data races | `#![forbid(unsafe_code)]` across all 16 core crates; narrow audited FFI only in `as-metal` & `as-wasm`. |
+| Memory corruption & data races | `#![forbid(unsafe_code)]` across all 21 core crates; narrow audited FFI only in `as-metal` & `as-wasm`. |
 | Runtime panics / DoS crashes | Workspace Clippy denies `unwrap_used`, `expect_used`, `panic`; all fallible APIs return `Result<T>`. |
 | Integer overflow in shape/stride math | `overflow-checks = true` in release profile + `checked_mul`/`checked_add` everywhere. |
 | OOM allocation bombs | Pre-allocation `MemoryLimits` (`max_tensor_bytes`, `MAX_RANK = 16`, `MAX_IMAGE_DIM = 16_384`). |
@@ -153,7 +163,7 @@ Clone the repo and run commands directly — no Python environment required:
 git clone https://github.com/Xaynxofficial/tarsix.git
 cd tarsix
 
-# Verify all 37 unit, numerical, gradcheck, and security tests
+# Verify all 52 unit, numerical, compiler, scheduler, server, distributed, and security tests
 cargo test --workspace
 
 # Show detected CPU/GPU hardware & security posture
@@ -307,22 +317,27 @@ Reproducible measurements collected via `cargo run --release -p as-bench` on **A
 ## Workspace Crates
 
 <details>
-<summary><strong>Inspect all 18 crates & SDKs</strong></summary>
+<summary><strong>Inspect all 23 crates & SDKs</strong></summary>
 
 - `crates/as-core` — Core types, errors, `MemoryLimits`, `F16`/`BF16`, `Shape`, `Layout`
+- `crates/as-memory` — Memory Engine: lock-free `MemoryTracker`, `BufferPool`, static interval-coloring `MemoryPlan`
 - `crates/as-backend` — `Backend` and `Storage` hardware abstraction traits
 - `crates/as-cpu` — Safe multi-core tiled CPU execution engine
 - `crates/as-metal` — Apple Silicon `Metal.framework` GPU backend
 - `crates/as-tensor` — Public `Tensor<B>` Rust API
-- `crates/as-graph` — Computational graph IR, DCE, Unary Fusion, `ASGR` codec
+- `crates/as-graph` — Graph Compiler (`O0`–`O3`), Constant Folding, CSE, Algebraic Simplify, `FusedLinear`, shape inference, `ASGR` codec
+- `crates/as-scheduler` — Hardware Scheduler: dynamic CPU/Metal discovery, cost-model placement, parallel DAG wave execution
 - `crates/as-autograd` — Reverse-mode `Tape`, checkpointing, forward-mode `DualTensor`, `gradcheck`
-- `crates/as-nn` — Neural network layers, activations, losses, attention, Transformer
+- `crates/as-nn` — Neural network layers, `LoRALinear`, activations, losses, attention, Transformer
 - `crates/as-optim` — `Sgd`, `Adam`, `AdamW`, LR schedulers, gradient clipping
-- `crates/as-train` — `Dataset`, `DataLoader`, CSV I/O, metrics, `ASCK` checkpoints
+- `crates/as-train` — Training Pipeline: declarative `Trainer`, `Callback`s (`EarlyStopping`, `BestCheckpoint`, JSONL), `TrainState` resume, `Dataset`, `DataLoader`, CSV, `ASCK`, SVG charts
 - `crates/as-io` — Bounded JSON parser, Safetensors reader/writer, `ModelConfig`
-- `crates/as-runtime` — `InferenceSession`, profiling, dynamic batching, streaming
-- `crates/as-llm` — Multi-architecture LLM decoder, GQA, RoPE, KV-Cache, BPE, Int8 quantization
-- `crates/as-vision` — Image preprocessing, `PatchEmbed`, `VisionTransformer`, `CnnClassifier`
+- `crates/as-hub` — Model Hub: pure Rust SHA-256, content-addressable `ModelCache`, searchable `ModelCard` registry, sharded Safetensors loader
+- `crates/as-runtime` — `InferenceSession`, op-level Model Profiler, Roofline analysis, Chrome Trace JSON & SVG flamegraphs
+- `crates/as-serve` — Inference Server: hardened HTTP/1.1 + SSE, `DynamicBatcher`, OpenAI `/v1/chat/completions`, `/v1/infer`, Prometheus `/metrics`
+- `crates/as-dist` — Distributed Compute: Ring-AllReduce, `LocalCluster`, `TcpCommunicator` (`ASDC` framing), `DistributedDataParallel` (DDP)
+- `crates/as-llm` — Multi-architecture LLM decoder, GQA, RoPE, KV-Cache, BPE, Int8 & Q4 quantization
+- `crates/as-vision` — Image preprocessing, `PatchEmbed`, `VisionTransformer`, `CnnClassifier`, YOLO `ObjectDetector`
 - `crates/as-accel` — Hardware discovery, MSL/WGSL/CUDA kernels, differential consistency harness
 - `crates/as-wasm` — Zero-dependency WebAssembly & native C-ABI `cdylib`
 - `crates/as-cli` — Command-line interface (`as-cli`)

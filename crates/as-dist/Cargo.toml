@@ -1,0 +1,15 @@
+[package]
+name = "as-dist"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Zero-dependency Distributed Compute: Ring-AllReduce, TCP multi-machine transport, local multi-worker cluster, and DDP."
+
+[dependencies]
+as-core = { path = "../as-core" }
+as-tensor = { path = "../as-tensor" }
+as-nn = { path = "../as-nn" }
+
+[lints]
+workspace = true

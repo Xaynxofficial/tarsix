@@ -8,6 +8,7 @@ description = "Computational graph IR, topological scheduling, optimization, fus
 
 [dependencies]
 as-core = { path = "../as-core" }
+as-memory = { path = "../as-memory" }
 as-backend = { path = "../as-backend" }
 as-tensor = { path = "../as-tensor" }
 

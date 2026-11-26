@@ -112,7 +112,7 @@ impl DataLoader {
     }
 
     /// Materializes all mini-batches for one epoch using deterministic `rng`.
-    pub fn epoch_batches<D: Dataset>(&self, dataset: &D, rng: &mut Rng) -> Result<Vec<Batch>> {
+    pub fn epoch_batches<D: Dataset + ?Sized>(&self, dataset: &D, rng: &mut Rng) -> Result<Vec<Batch>> {
         let n = dataset.len();
         let mut indices: Vec<usize> = (0..n).collect();
         if self.shuffle {

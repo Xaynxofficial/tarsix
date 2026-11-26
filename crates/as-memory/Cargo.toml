@@ -1,0 +1,13 @@
+[package]
+name = "as-memory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Memory engine with global budget tracking, size-class buffer pooling, and static graph memory reuse planning."
+
+[dependencies]
+as-core = { path = "../as-core" }
+
+[lints]
+workspace = true

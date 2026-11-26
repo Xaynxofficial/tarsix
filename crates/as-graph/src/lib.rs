@@ -17,12 +17,20 @@
     )
 )]
 
+pub mod compiler;
 pub mod executor;
+pub mod infer;
 pub mod ir;
 pub mod optimize;
 pub mod serialize;
 
-pub use executor::{ExecutionPlan, execute_graph};
+pub use compiler::{
+    AlgebraicSimplifyPass, CompilationReport, CompiledGraph, CompilerPass, ConstantFoldingPass,
+    CsePass, DeadCodeEliminationPass, LinearActivationFusionPass, OptLevel, PassPipeline,
+    PassStats, UnaryFusionPass, compile_graph,
+};
+pub use executor::{ExecutionPlan, NodeExecutionRecord, execute_graph, execute_graph_profiled};
+pub use infer::{TensorMeta, build_memory_plan, infer_graph_metadata};
 pub use ir::{Graph, MAX_GRAPH_NODES, Node, NodeId, Op};
 pub use optimize::{OptimizationReport, optimize_graph};
 pub use serialize::{deserialize_graph, serialize_graph};

@@ -49,6 +49,7 @@ dependencies = [
  "as-optim",
  "as-tensor",
  "as-train",
+ "as-vision",
 ]
 
 [[package]]
@@ -64,11 +65,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "as-dist"
+version = "0.1.0"
+dependencies = [
+ "as-core",
+ "as-nn",
+ "as-tensor",
+]
+
+[[package]]
 name = "as-graph"
 version = "0.1.0"
 dependencies = [
  "as-backend",
  "as-core",
+ "as-memory",
+ "as-tensor",
+]
+
+[[package]]
+name = "as-hub"
+version = "0.1.0"
+dependencies = [
+ "as-core",
+ "as-io",
  "as-tensor",
 ]
 
@@ -88,6 +108,13 @@ dependencies = [
  "as-io",
  "as-nn",
  "as-tensor",
+]
+
+[[package]]
+name = "as-memory"
+version = "0.1.0"
+dependencies = [
+ "as-core",
 ]
 
 [[package]]
@@ -122,9 +149,35 @@ dependencies = [
 name = "as-runtime"
 version = "0.1.0"
 dependencies = [
+ "as-backend",
  "as-core",
  "as-graph",
  "as-io",
+ "as-memory",
+ "as-tensor",
+]
+
+[[package]]
+name = "as-scheduler"
+version = "0.1.0"
+dependencies = [
+ "as-backend",
+ "as-core",
+ "as-cpu",
+ "as-graph",
+ "as-metal",
+ "as-tensor",
+]
+
+[[package]]
+name = "as-serve"
+version = "0.1.0"
+dependencies = [
+ "as-backend",
+ "as-core",
+ "as-graph",
+ "as-io",
+ "as-runtime",
  "as-tensor",
 ]
 

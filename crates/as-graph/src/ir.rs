@@ -59,6 +59,47 @@ pub enum Op {
         /// Whether to retain reduced dimensions as size 1.
         keepdim: bool,
     },
+    /// Fused linear projection: `MatMul(x, w) [+ bias] -> [activation]`.
+    ///
+    /// Inputs are `[x, w]` when `has_bias == false`, or `[x, w, bias]` when `has_bias == true`.
+    FusedLinear {
+        /// Whether a third input tensor (`bias`) is added after `MatMul`.
+        has_bias: bool,
+        /// Optional fused trailing unary activation.
+        activation: Option<UnaryOp>,
+    },
+}
+
+impl Op {
+    /// Returns a concise static operator name for profiling and diagnostics.
+    pub const fn op_name(&self) -> &'static str {
+        match self {
+            Self::Input { .. } => "Input",
+            Self::Constant { .. } => "Constant",
+            Self::Binary(BinaryOp::Add) => "Add",
+            Self::Binary(BinaryOp::Sub) => "Sub",
+            Self::Binary(BinaryOp::Mul) => "Mul",
+            Self::Binary(BinaryOp::Div) => "Div",
+            Self::Unary(UnaryOp::Neg) => "Neg",
+            Self::Unary(UnaryOp::Abs) => "Abs",
+            Self::Unary(UnaryOp::Exp) => "Exp",
+            Self::Unary(UnaryOp::Ln) => "Ln",
+            Self::Unary(UnaryOp::Sqrt) => "Sqrt",
+            Self::Unary(UnaryOp::Relu) => "Relu",
+            Self::Unary(UnaryOp::Powf(_)) => "Powf",
+            Self::FusedUnaryChain(_) => "FusedUnaryChain",
+            Self::MatMul => "MatMul",
+            Self::Reshape(_) => "Reshape",
+            Self::Transpose { .. } => "Transpose",
+            Self::Reduce { op, .. } => match op {
+                ReduceOp::Sum => "ReduceSum",
+                ReduceOp::Mean => "ReduceMean",
+                ReduceOp::Max => "ReduceMax",
+                ReduceOp::Min => "ReduceMin",
+            },
+            Self::FusedLinear { .. } => "FusedLinear",
+        }
+    }
 }
 
 /// A single directed node in a computational [`Graph`].
@@ -302,6 +343,13 @@ fn validate_arity(op: &Op, arity: usize) -> Result<()> {
         | Op::Transpose { .. }
         | Op::Reduce { .. } => 1,
         Op::Binary(_) | Op::MatMul => 2,
+        Op::FusedLinear { has_bias, .. } => {
+            if *has_bias {
+                3
+            } else {
+                2
+            }
+        }
     };
     if arity != expected {
         return Err(Error::InvalidArgument {

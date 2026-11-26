@@ -40,7 +40,7 @@ pub fn optimize_graph(graph: &Graph) -> Result<(Graph, OptimizationReport)> {
     Ok((fused_graph, report))
 }
 
-fn dead_code_elimination(graph: &Graph) -> Result<(Graph, usize)> {
+pub(crate) fn dead_code_elimination(graph: &Graph) -> Result<(Graph, usize)> {
     let nodes = graph.nodes();
     if graph.outputs().is_empty() {
         return Ok((graph.clone(), 0));
@@ -103,7 +103,7 @@ fn dead_code_elimination(graph: &Graph) -> Result<(Graph, usize)> {
     Ok((Graph::from_raw(new_nodes, new_outputs)?, dead_count))
 }
 
-fn fuse_unary_chains(graph: &Graph) -> Result<(Graph, usize)> {
+pub(crate) fn fuse_unary_chains(graph: &Graph) -> Result<(Graph, usize)> {
     let nodes = graph.nodes();
     let n = nodes.len();
     let mut consumer_count = vec![0usize; n];
